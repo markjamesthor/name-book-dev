@@ -172,52 +172,43 @@ function buildCoverContent() {
   const subtitle = config.bookMeta.subtitle;
   const bgPath = config.illustrations['golden_star'];
 
-  // 배경: golden_star 일러스트
-  let html = `<div class="cover-bg" style="background-image:url('${bgPath}')"></div>`;
+  // 배경: 다른 페이지와 동일한 구조 (page-bg-blur + page-bg-img)
+  let imgContent = `<div class="page-bg-blur" style="background-image:url('${bgPath}')"></div>
+    <img class="page-bg-img" src="${bgPath}" alt="커버" />`;
 
-  if (isRemovingBg) {
-    // 로딩 상태
-    html += `
-      <div class="cover-layout">
-        <div class="cover-title">${title}</div>
-        <div class="cover-subtitle">${subtitle.replace(/\s/g, '<br>')}</div>
-        <div class="cover-loading">
-          <div class="cover-spinner"></div>
-          <div class="cover-loading-text">${coverLoadingText || '처리 중...'}</div>
-        </div>
-      </div>`;
-  } else if (coverPhotoURL) {
-    // 사진 배치 — width:100% + 눈 중앙 정렬
+  if (coverPhotoURL && !isRemovingBg) {
+    // 아이 사진 오버레이 (배경 위에 절대 배치)
     const eyeRatio = computeEyeRatio();
-    let childStyle;
-    if (eyeRatio !== null) {
-      // top:50% + translateY(-eyeRatio%) → 눈이 페이지 정중앙
-      childStyle = `width:100%;position:absolute;left:0;top:50%;transform:translateY(-${(eyeRatio * 100).toFixed(1)}%);`;
-    } else {
-      childStyle = 'width:100%;position:absolute;left:0;top:50%;transform:translateY(-40%);';
-    }
+    const ty = eyeRatio !== null ? (eyeRatio * 100).toFixed(1) : '40';
+    imgContent += `<img class="cover-child-img" src="${coverPhotoURL}" style="top:50%;transform:translateY(-${ty}%)" />`;
+    imgContent += `<div id="cover-photo-result" class="cover-click-overlay"></div>`;
 
-    html += `<div class="cover-child-wrap"><img src="${coverPhotoURL}" style="${childStyle}" alt="아이 사진" /></div>`;
-    html += `
-      <div class="cover-text-wrap">
-        <div class="cover-title">${title}</div>
-        <div class="cover-subtitle">${subtitle.replace(/\s/g, '<br>')}</div>
-      </div>`;
-    html += `<div class="cover-change-overlay" id="cover-photo-result"></div>`;
-  } else {
-    // 업로드 영역
-    html += `
-      <div class="cover-layout">
-        <div class="cover-title">${title}</div>
-        <div class="cover-subtitle">${subtitle.replace(/\s/g, '<br>')}</div>
-        <div class="cover-photo-zone" id="cover-upload-zone">
-          <div class="upload-icon">📷</div>
-          <div class="upload-text">사진을 선택하세요</div>
-        </div>
+    return `
+      <div class="slide-img-wrap">${imgContent}</div>
+      <div class="page-text-overlay text-pos-top" style="color:white">
+        <div class="page-story-text"><span class="cover-title-inline">${title}</span><br>${subtitle}</div>
       </div>`;
   }
 
-  return html;
+  // 업로드 전/로딩 중: cover-layout 오버레이
+  let overlayContent = `<div class="cover-title">${title}</div>
+    <div class="cover-subtitle">${subtitle.replace(/\s/g, '<br>')}</div>`;
+
+  if (isRemovingBg) {
+    overlayContent += `<div class="cover-loading">
+      <div class="cover-spinner"></div>
+      <div class="cover-loading-text">${coverLoadingText || '처리 중...'}</div>
+    </div>`;
+  } else {
+    overlayContent += `<div class="cover-photo-zone" id="cover-upload-zone">
+      <div class="upload-icon">📷</div>
+      <div class="upload-text">사진을 선택하세요</div>
+    </div>`;
+  }
+
+  return `
+    <div class="slide-img-wrap">${imgContent}</div>
+    <div class="cover-layout">${overlayContent}</div>`;
 }
 
 function buildSlideContent(pageIndex) {
