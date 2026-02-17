@@ -368,6 +368,17 @@
   }
 
   /* ===== Cover Page ===== */
+
+  /* 배경 이미지 (golden_star) */
+  .cover-bg {
+    position: absolute;
+    inset: 0;
+    background-size: cover;
+    background-position: center;
+    z-index: 0;
+  }
+
+  /* 업로드 전 / 로딩 중 레이아웃 */
   .cover-layout {
     position: absolute;
     inset: 0;
@@ -377,24 +388,30 @@
     justify-content: center;
     gap: 16px;
     padding: 24px;
-    z-index: 10;
+    z-index: 5;
+    background: rgba(0,0,0,0.35);
   }
+
+  /* 제목/부제 */
   .cover-title {
     font-family: 'Noto Serif KR', 'Batang', serif;
     font-size: 30px;
     font-weight: 700;
     color: #f0d060;
-    text-shadow: 0 2px 12px rgba(240, 208, 96, 0.4);
+    text-shadow: 0 2px 12px rgba(240, 208, 96, 0.4), 0 0 40px rgba(0,0,0,0.8);
     letter-spacing: 2px;
     text-align: center;
   }
   .cover-subtitle {
     font-family: 'Noto Serif KR', 'Batang', serif;
     font-size: 15px;
-    color: rgba(255,255,255,0.8);
+    color: rgba(255,255,255,0.85);
     text-align: center;
     line-height: 1.8;
+    text-shadow: 0 1px 8px rgba(0,0,0,0.8);
   }
+
+  /* 업로드 영역 */
   .cover-photo-zone {
     width: 180px;
     height: 220px;
@@ -414,33 +431,48 @@
     border-color: rgba(255,255,255,0.6);
     background: rgba(255,255,255,0.1);
   }
-  .cover-photo-zone .upload-icon {
-    font-size: 36px;
-    opacity: 0.5;
+  .cover-photo-zone .upload-icon { font-size: 36px; opacity: 0.5; }
+  .cover-photo-zone .upload-text { font-size: 13px; color: rgba(255,255,255,0.5); }
+
+  /* 아이 사진 컨테이너 (키포인트 기반 배치) */
+  .cover-child-wrap {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    z-index: 2;
   }
-  .cover-photo-zone .upload-text {
-    font-size: 13px;
-    color: rgba(255,255,255,0.5);
+  .cover-child-wrap img {
+    filter: drop-shadow(0 4px 24px rgba(0,0,0,0.6));
   }
-  .cover-photo-result {
-    margin-top: 8px;
+
+  /* 사진 위 제목 오버레이 */
+  .cover-text-wrap {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    padding: 20px 24px;
+    text-align: center;
+    z-index: 3;
+    pointer-events: none;
+    background: linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.2) 60%, transparent 100%);
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 8px;
+    gap: 4px;
+  }
+  .cover-text-wrap .cover-title { font-size: 24px; }
+  .cover-text-wrap .cover-subtitle { font-size: 12px; line-height: 1.6; }
+
+  /* 사진 변경 클릭 영역 */
+  .cover-change-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
     cursor: pointer;
   }
-  .cover-photo-img {
-    max-height: 220px;
-    max-width: 100%;
-    object-fit: contain;
-    border-radius: 8px;
-    filter: drop-shadow(0 4px 16px rgba(0,0,0,0.5));
-  }
-  .cover-photo-hint {
-    font-size: 11px;
-    color: rgba(255,255,255,0.35);
-  }
+
+  /* 로딩 */
   .cover-loading {
     display: flex;
     flex-direction: column;
@@ -466,16 +498,17 @@
 
   /* Cover thumbnail */
   .thumb-cover {
+    position: absolute;
+    inset: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 100%;
-    height: 100%;
     font-size: 9px;
     font-weight: 700;
     color: rgba(240, 208, 96, 0.9);
     text-shadow: 0 1px 3px rgba(0,0,0,0.8);
     letter-spacing: 0.5px;
+    background: rgba(0,0,0,0.25);
   }
 
   /* ===== MOBILE (max-width: 768px) ===== */
@@ -635,9 +668,10 @@
 
     /* Cover — mobile */
     .cover-title { font-size: 22px; }
-    .cover-subtitle { font-size: 13px; }
+    .cover-subtitle { font-size: 12px; }
     .cover-photo-zone { width: 140px; height: 170px; }
-    .cover-photo-img { max-height: 170px; }
+    .cover-text-wrap .cover-title { font-size: 18px; }
+    .cover-text-wrap .cover-subtitle { font-size: 10px; }
 
     /* Bottom sheet inputs */
     .settings-sheet .input-group { margin-bottom: 14px; }

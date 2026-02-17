@@ -58,6 +58,7 @@ let isAnimating = false;
 let coverPhotoURL = null;   // 배경 제거된 사진 blob URL
 let isRemovingBg = false;   // 로딩 상태
 let coverLoadingText = '';  // 단계별 로딩 텍스트
+let coverCropData = null;   // { keypoints, refY, refHeight } — 키포인트 기반 배치용
 
 // ========== DOM ==========
 const els = {};
@@ -140,50 +141,100 @@ function syncInputs(source) {
 
 function getPages() {
   const coverPage = {
-    scene: '표지',
-    title: '앞표지',
+    scene: '커버',
+    title: '커버',
     isCover: true,
-    bgGradient: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
-    textColor: 'white',
-    textPosition: 'center'
+    illustration: 'golden_star'
   };
   return [coverPage, ...config.versions[currentVersion].pages];
+}
+
+function computeChildPosition() {
+  if (!coverCropData || !coverCropData.keypoints) return null;
+
+  const kps = coverCropData.keypoints;
+  const refY = coverCropData.refY;
+  const refH = coverCropData.refHeight;
+
+  const findKp = (name) => {
+    const kp = kps.find(k => k.name === name && k.score > 0.3);
+    return kp ? (kp.y - refY) / refH : null;
+  };
+
+  const eyeL = findKp('left_eye');
+  const eyeR = findKp('right_eye');
+  if (eyeL === null && eyeR === null) return null;
+  const eyeY = eyeL !== null && eyeR !== null ? (eyeL + eyeR) / 2 : (eyeL || eyeR);
+
+  // 엉덩이 위치 (hip 우선, 없으면 knee)
+  const hipL = findKp('left_hip');
+  const hipR = findKp('right_hip');
+  const kneeL = findKp('left_knee');
+  const kneeR = findKp('right_knee');
+  let bottomY = null;
+  if (hipL !== null || hipR !== null) {
+    bottomY = hipL !== null && hipR !== null ? (hipL + hipR) / 2 : (hipL || hipR);
+  } else if (kneeL !== null || kneeR !== null) {
+    bottomY = kneeL !== null && kneeR !== null ? (kneeL + kneeR) / 2 : (kneeL || kneeR);
+  }
+  if (bottomY === null || bottomY - eyeY < 0.05) return null;
+
+  // 눈 = 페이지 50%, 엉덩이 = 페이지 100%
+  const h = 50 / (bottomY - eyeY);       // 이미지 높이 (컨테이너 %)
+  const t = 50 - eyeY * h;               // top offset (%)
+  return { height: h, top: t };
 }
 
 function buildCoverContent() {
   const title = config.bookMeta.title;
   const subtitle = config.bookMeta.subtitle;
+  const bgPath = config.illustrations['golden_star'];
 
-  let photoArea = '';
+  // 배경: golden_star 일러스트
+  let html = `<div class="cover-bg" style="background-image:url('${bgPath}')"></div>`;
+
   if (isRemovingBg) {
-    photoArea = `
-      <div class="cover-loading">
-        <div class="cover-spinner"></div>
-        <div class="cover-loading-text">${coverLoadingText || '처리 중...'}</div>
+    // 로딩 상태
+    html += `
+      <div class="cover-layout">
+        <div class="cover-title">${title}</div>
+        <div class="cover-subtitle">${subtitle.replace(/\s/g, '<br>')}</div>
+        <div class="cover-loading">
+          <div class="cover-spinner"></div>
+          <div class="cover-loading-text">${coverLoadingText || '처리 중...'}</div>
+        </div>
       </div>`;
   } else if (coverPhotoURL) {
-    photoArea = `
-      <div class="cover-photo-result" id="cover-photo-result">
-        <img class="cover-photo-img" src="${coverPhotoURL}" alt="아이 사진" />
-        <div class="cover-photo-hint">탭하여 사진 변경</div>
+    // 사진 배치 — 키포인트 기반 포지셔닝
+    const pos = computeChildPosition();
+    let childStyle;
+    if (pos) {
+      childStyle = `height:${pos.height.toFixed(1)}%;top:${pos.top.toFixed(1)}%;left:50%;transform:translateX(-50%);position:absolute;`;
+    } else {
+      childStyle = 'max-height:70%;position:absolute;bottom:0;left:50%;transform:translateX(-50%);';
+    }
+
+    html += `<div class="cover-child-wrap"><img src="${coverPhotoURL}" style="${childStyle}" alt="아이 사진" /></div>`;
+    html += `
+      <div class="cover-text-wrap">
+        <div class="cover-title">${title}</div>
+        <div class="cover-subtitle">${subtitle.replace(/\s/g, '<br>')}</div>
       </div>`;
+    html += `<div class="cover-change-overlay" id="cover-photo-result"></div>`;
   } else {
-    photoArea = `
-      <div class="cover-photo-zone" id="cover-upload-zone">
-        <div class="upload-icon">📷</div>
-        <div class="upload-text">사진을 선택하세요</div>
+    // 업로드 영역
+    html += `
+      <div class="cover-layout">
+        <div class="cover-title">${title}</div>
+        <div class="cover-subtitle">${subtitle.replace(/\s/g, '<br>')}</div>
+        <div class="cover-photo-zone" id="cover-upload-zone">
+          <div class="upload-icon">📷</div>
+          <div class="upload-text">사진을 선택하세요</div>
+        </div>
       </div>`;
   }
 
-  return `
-    <div class="slide-img-wrap">
-      <div class="page-bg-gradient" style="background:linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)"></div>
-    </div>
-    <div class="cover-layout">
-      <div class="cover-title">${title}</div>
-      <div class="cover-subtitle">${subtitle.replace(/\s/g, '<br>')}</div>
-      ${photoArea}
-    </div>`;
+  return html;
 }
 
 function buildSlideContent(pageIndex) {
@@ -460,7 +511,8 @@ function renderThumbnails() {
     thumb.className = `thumb ${i === currentPageIndex ? 'active' : ''}`;
 
     if (page.isCover) {
-      thumb.innerHTML = `<div class="thumb-gradient" style="background:linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)"></div><div class="thumb-cover">표지</div>`;
+      const coverBg = config.illustrations['golden_star'];
+      thumb.innerHTML = `<img src="${coverBg}" alt="커버" /><div class="thumb-cover">커버</div>`;
     } else if (page.illustration && config.illustrations[page.illustration]) {
       const imgPath = config.illustrations[page.illustration];
       thumb.innerHTML = `<img src="${imgPath}" alt="${page.title}" /><span class="thumb-label">${page.scene}</span>`;
@@ -515,14 +567,21 @@ async function handleCoverPhoto(file) {
   renderThumbnails();
 
   try {
-    // Step 1: 스마트 크롭 — 인물 영역 감지
+    // Step 1: 스마트 크롭 — 인물 영역 감지 + 키포인트 저장
     let fileToSend = file;
+    coverCropData = null;
     try {
       const cropResult = await smartCropPerson(file);
-      if (cropResult && cropResult.cropped && cropResult.crop) {
-        console.log('스마트 크롭 적용:', cropResult.crop);
-        const croppedBlob = await cropImageOnCanvas(file, cropResult.crop);
-        fileToSend = new File([croppedBlob], file.name, { type: 'image/jpeg' });
+      if (cropResult && cropResult.keypoints) {
+        if (cropResult.cropped && cropResult.crop) {
+          console.log('스마트 크롭 적용:', cropResult.crop);
+          coverCropData = { keypoints: cropResult.keypoints, refY: cropResult.crop.y, refHeight: cropResult.crop.height };
+          const croppedBlob = await cropImageOnCanvas(file, cropResult.crop);
+          fileToSend = new File([croppedBlob], file.name, { type: 'image/jpeg' });
+        } else {
+          console.log('스마트 크롭 불필요 (키포인트만 저장)');
+          coverCropData = { keypoints: cropResult.keypoints, refY: 0, refHeight: cropResult.image_height };
+        }
       }
     } catch (e) {
       console.warn('스마트 크롭 스킵 (서버 미연결):', e.message);
