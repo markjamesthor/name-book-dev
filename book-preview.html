@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>노미네 왕국 — Book Preview</title>
+<style>
+  /* ===== Reset & Base ===== */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+    background: #0f0f17;
+    color: #e0e0e0;
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* ===== Top Bar ===== */
+  .top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 20px;
+    background: #1a1a2e;
+    border-bottom: 1px solid #2a2a4a;
+    flex-shrink: 0;
+  }
+  .top-bar h1 {
+    font-size: 16px;
+    font-weight: 600;
+    color: #c9a0ff;
+    letter-spacing: 0.5px;
+  }
+  .top-bar .book-info {
+    font-size: 11px;
+    color: #888;
+  }
+  .settings-toggle {
+    display: none; /* shown only on mobile */
+    height: 32px;
+    padding: 0 12px;
+    border: 1px solid #3a3a5a;
+    border-radius: 8px;
+    background: #1e1e3a;
+    color: #c9a0ff;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+    flex-shrink: 0;
+    gap: 4px;
+    white-space: nowrap;
+  }
+
+  /* ===== Main Layout ===== */
+  .main-area {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+
+  /* ===== Left Panel (Controls) — Desktop only ===== */
+  .left-panel {
+    width: 260px;
+    flex-shrink: 0;
+    background: #16162a;
+    border-right: 1px solid #2a2a4a;
+    padding: 20px 16px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .panel-section h3 {
+    font-size: 11px;
+    font-weight: 600;
+    color: #888;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 10px;
+  }
+
+  .input-group { margin-bottom: 12px; }
+  .input-group label {
+    display: block;
+    font-size: 12px;
+    color: #aaa;
+    margin-bottom: 4px;
+  }
+  .input-group input {
+    width: 100%;
+    padding: 8px 10px;
+    background: #1e1e3a;
+    border: 1px solid #3a3a5a;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 14px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .input-group input:focus { border-color: #c9a0ff; }
+
+  /* Version buttons */
+  .version-switch { display: flex; gap: 6px; }
+  .version-btn {
+    flex: 1;
+    padding: 8px;
+    border: 1px solid #3a3a5a;
+    border-radius: 6px;
+    background: #1e1e3a;
+    color: #aaa;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-align: center;
+  }
+  .version-btn:hover { border-color: #c9a0ff; color: #ddd; }
+  .version-btn.active {
+    background: #c9a0ff;
+    color: #0f0f17;
+    border-color: #c9a0ff;
+    font-weight: 600;
+  }
+  .version-desc {
+    margin-top: 8px;
+    font-size: 11px;
+    color: #888;
+    text-align: center;
+  }
+
+  /* Page info card */
+  .page-info-card {
+    background: #1e1e3a;
+    border-radius: 8px;
+    padding: 12px;
+    border: 1px solid #2a2a4a;
+  }
+  .page-info-card .page-scene { font-size: 13px; font-weight: 600; color: #c9a0ff; }
+  .page-info-card .page-counter { font-size: 11px; color: #666; margin-top: 4px; }
+
+  /* ===== Right Panel (Preview) ===== */
+  .right-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    position: relative;
+    min-width: 0;
+  }
+
+  .page-viewer-wrap {
+    position: relative;
+    width: 100%;
+    max-width: 750px;
+    aspect-ratio: 250 / 200;
+    max-height: calc(100vh - 200px);
+  }
+
+  #page-viewer {
+    width: 100%;
+    height: 100%;
+    border-radius: 8px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 4px 30px rgba(0,0,0,0.6);
+    background: #111;
+  }
+
+  /* ===== Carousel ===== */
+  .carousel-track {
+    display: flex;
+    width: 300%;
+    height: 100%;
+    will-change: transform;
+  }
+  .carousel-slide {
+    width: 33.333%;
+    height: 100%;
+    flex-shrink: 0;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Image wrapper — fills slide on desktop */
+  .slide-img-wrap {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+  }
+
+  /* Blurred backdrop (hidden on desktop, shown on mobile) */
+  .page-bg-blur {
+    display: none;
+  }
+
+  .page-bg-img {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+  }
+  .page-bg-gradient {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+  }
+
+  /* Text overlay — on desktop, overlays the image */
+  .page-text-overlay {
+    position: absolute;
+    left: 0; right: 0;
+    padding: 24px 40px;
+    text-align: center;
+    z-index: 10;
+    background: linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.3) 70%, transparent 100%);
+  }
+  .text-pos-top    { top: 0; }
+  .text-pos-center { top: 50%; transform: translateY(-50%); background: rgba(0,0,0,0.35); }
+  .text-pos-bottom { bottom: 0; background: linear-gradient(0deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.3) 70%, transparent 100%); }
+
+  .page-story-text {
+    font-family: 'Noto Serif KR', 'RIDIBatang', 'Batang', serif;
+    font-size: 16px;
+    line-height: 2.2;
+    text-shadow: 0 1px 6px rgba(0,0,0,0.7);
+    word-break: keep-all;
+  }
+
+  /* Desktop nav arrows (below viewer) */
+  .nav-arrows {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 12px;
+  }
+  .nav-btn {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    border: 1px solid #3a3a5a;
+    background: #1e1e3a;
+    color: #ccc;
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+  }
+  .nav-btn:hover:not(:disabled) { border-color: #c9a0ff; color: #c9a0ff; }
+  .nav-btn:disabled { opacity: 0.3; cursor: default; }
+  .nav-page-num { font-size: 12px; color: #888; min-width: 60px; text-align: center; }
+
+  /* Keyboard hint */
+  .keyboard-hint {
+    position: absolute;
+    bottom: 8px; right: 20px;
+    font-size: 10px; color: #555;
+  }
+  .keyboard-hint kbd {
+    padding: 1px 5px;
+    background: #2a2a4a;
+    border-radius: 3px;
+    font-family: inherit;
+    font-size: 10px;
+    color: #888;
+  }
+
+  /* ===== Mobile Nav Bar (hidden on desktop) ===== */
+  .mobile-nav-bar {
+    display: none;
+    flex-shrink: 0;
+  }
+
+  /* ===== Mobile Version Bar (hidden on desktop) ===== */
+  .mobile-version-bar {
+    display: none;
+    flex-shrink: 0;
+  }
+
+  /* ===== Bottom Thumbnail Strip ===== */
+  .thumbnail-bar {
+    flex-shrink: 0;
+    background: #1a1a2e;
+    border-top: 1px solid #2a2a4a;
+    padding: 10px 16px;
+  }
+  #thumbnail-strip {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+  }
+  #thumbnail-strip::-webkit-scrollbar { height: 4px; }
+  #thumbnail-strip::-webkit-scrollbar-track { background: #16162a; border-radius: 2px; }
+  #thumbnail-strip::-webkit-scrollbar-thumb { background: #3a3a5a; border-radius: 2px; }
+
+  .thumb {
+    flex-shrink: 0;
+    width: 80px; height: 64px;
+    border-radius: 6px;
+    overflow: hidden;
+    cursor: pointer;
+    border: 2px solid transparent;
+    position: relative;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+  .thumb:hover { border-color: #5a5a8a; transform: translateY(-2px); }
+  .thumb.active { border-color: #c9a0ff; transform: translateY(-2px); }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .thumb-gradient { width: 100%; height: 100%; }
+  .thumb-label {
+    position: absolute;
+    bottom: 2px; right: 4px;
+    font-size: 9px; font-weight: 700;
+    color: rgba(255,255,255,0.8);
+    text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+  }
+
+  /* ===== Settings Bottom Sheet (mobile) ===== */
+  .settings-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+  }
+  .settings-overlay.open { display: flex; flex-direction: column; justify-content: flex-end; }
+  .settings-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+  }
+  .settings-sheet {
+    position: relative;
+    background: #1a1a2e;
+    border-top: 1px solid #3a3a5a;
+    border-radius: 16px 16px 0 0;
+    padding: 20px;
+    z-index: 1;
+  }
+  .settings-sheet .handle {
+    width: 40px; height: 4px;
+    background: #3a3a5a;
+    border-radius: 2px;
+    margin: 0 auto 16px;
+  }
+  .settings-sheet h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: #c9a0ff;
+    margin-bottom: 16px;
+  }
+
+  /* Carousel slide gap for visual separation */
+  .carousel-slide + .carousel-slide {
+    border-left: 3px solid #0f0f17;
+  }
+
+  /* ===== MOBILE (max-width: 768px) ===== */
+  @media (max-width: 768px) {
+    body { height: 100dvh; }
+
+    .top-bar {
+      padding: 8px 12px;
+      gap: 8px;
+    }
+    .top-bar h1 { font-size: 14px; }
+    .top-bar .book-info { display: none; }
+    .settings-toggle { display: flex; align-items: center; justify-content: center; }
+
+    /* Hide desktop left panel */
+    .left-panel { display: none; }
+
+    /* Main area → column */
+    .main-area {
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+    }
+
+    /* Right panel → full width, no padding */
+    .right-panel {
+      padding: 8px;
+      flex: 1;
+      justify-content: flex-start;
+    }
+
+    .page-viewer-wrap {
+      max-width: 100%;
+      max-height: none;
+      flex: 1;
+      aspect-ratio: auto;
+    }
+
+    #page-viewer {
+      border-radius: 10px;
+    }
+
+    /* Mobile: separate image and text vertically */
+    .carousel-slide {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .slide-img-wrap {
+      position: relative;
+      flex: 1;
+      min-height: 0;
+    }
+
+    /* Blurred backdrop + contain for full illustration */
+    .page-bg-blur {
+      display: block;
+      position: absolute;
+      top: -40px; left: -40px; right: -40px; bottom: -40px;
+      background-size: cover;
+      background-position: center;
+      filter: blur(50px) brightness(0.45) saturate(1.3);
+      transform: scale(1.15);
+      z-index: 0;
+    }
+    .slide-img-wrap .page-bg-img {
+      object-fit: contain;
+      z-index: 1;
+    }
+
+    /* Text as separate block below image */
+    .carousel-slide .page-text-overlay {
+      position: relative;
+      top: auto; bottom: auto;
+      transform: none;
+      flex-shrink: 0;
+      background: #16162a;
+      padding: 14px 20px;
+      max-height: 42%;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      border-top: 1px solid #2a2a4a;
+    }
+
+    /* Hide desktop nav arrows */
+    .nav-arrows { display: none; }
+    .keyboard-hint { display: none; }
+
+    /* Mobile text sizing */
+    .page-text-overlay { padding: 16px 20px; }
+    .page-story-text { font-size: 13px; line-height: 2.0; }
+
+    /* ===== Mobile Nav Bar ===== */
+    .mobile-nav-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 12px;
+      background: #16162a;
+      border-top: 1px solid #2a2a4a;
+      flex-shrink: 0;
+      gap: 8px;
+    }
+    .mobile-nav-btn {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      border: 1px solid #3a3a5a;
+      background: #1e1e3a;
+      color: #ccc;
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .mobile-nav-btn:disabled { opacity: 0.3; }
+    .mobile-nav-info {
+      flex: 1;
+      text-align: center;
+      min-width: 0;
+    }
+    .mobile-nav-info .scene-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: #c9a0ff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .mobile-nav-info .page-num {
+      font-size: 10px;
+      color: #666;
+    }
+
+    /* ===== Mobile Version Bar ===== */
+    .mobile-version-bar {
+      display: flex;
+      padding: 6px 12px;
+      gap: 6px;
+      background: #16162a;
+      flex-shrink: 0;
+    }
+    .mobile-version-bar .version-btn {
+      padding: 6px;
+      font-size: 11px;
+      border-radius: 6px;
+    }
+
+    /* Thumbnails — smaller on mobile */
+    .thumbnail-bar { padding: 8px 10px; }
+    .thumb {
+      width: 56px; height: 44px;
+      border-radius: 4px;
+    }
+    #thumbnail-strip { gap: 6px; }
+
+    /* Bottom sheet inputs */
+    .settings-sheet .input-group { margin-bottom: 14px; }
+    .settings-sheet .input-group label { font-size: 13px; color: #aaa; margin-bottom: 6px; }
+    .settings-sheet .input-group input {
+      padding: 12px 14px;
+      font-size: 16px; /* prevent iOS zoom */
+      border-radius: 10px;
+      background: #0f0f17;
+      border: 1px solid #3a3a5a;
+      color: #fff;
+    }
+    .settings-sheet .input-group input:focus { border-color: #c9a0ff; }
+  }
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<!-- Top Bar -->
+<div class="top-bar">
+  <h1>노미네 왕국 — Book Preview</h1>
+  <div class="book-info">250 x 200 mm (가로형) | Config-Driven</div>
+  <button class="settings-toggle" id="btn-settings" aria-label="이름 변경">&#9881; 이름 변경</button>
+</div>
+
+<!-- Main Area -->
+<div class="main-area">
+  <!-- Left Panel: Controls (desktop only) -->
+  <div class="left-panel">
+    <div class="panel-section">
+      <h3>입력</h3>
+      <div class="input-group">
+        <label>아이 이름</label>
+        <input type="text" id="input-firstName" placeholder="도현" />
+      </div>
+      <div class="input-group">
+        <label>부모 호칭</label>
+        <input type="text" id="input-parentNames" placeholder="엄마 아빠" />
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <h3>버전</h3>
+      <div class="version-switch">
+        <button class="version-btn active" data-version="A">베이비 (0~4세 추천)</button>
+        <button class="version-btn" data-version="B">키즈 (5~8세 추천)</button>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <h3>현재 페이지</h3>
+      <div class="page-info-card">
+        <div class="page-scene" id="page-title">—</div>
+        <div class="page-counter" id="page-counter">—</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right Panel: Preview -->
+  <div class="right-panel">
+    <div class="page-viewer-wrap">
+      <div id="page-viewer"></div>
+    </div>
+    <div class="nav-arrows">
+      <button class="nav-btn" id="btn-prev">&#9664;</button>
+      <span class="nav-page-num" id="page-counter-bottom"></span>
+      <button class="nav-btn" id="btn-next">&#9654;</button>
+    </div>
+    <div class="keyboard-hint">
+      <kbd>&larr;</kbd> <kbd>&rarr;</kbd> 키보드로 이동
+    </div>
+  </div>
+</div>
+
+<!-- Mobile Nav Bar -->
+<div class="mobile-nav-bar">
+  <button class="mobile-nav-btn" id="m-btn-prev">&#9664;</button>
+  <div class="mobile-nav-info">
+    <div class="scene-name" id="m-page-title">—</div>
+    <div class="page-num" id="m-page-counter">—</div>
+  </div>
+  <button class="mobile-nav-btn" id="m-btn-next">&#9654;</button>
+</div>
+
+<!-- Mobile Version Bar -->
+<div class="mobile-version-bar">
+  <button class="version-btn active" data-version="A">베이비 (0~4세 추천)</button>
+  <button class="version-btn" data-version="B">키즈 (5~8세 추천)</button>
+</div>
+
+<!-- Bottom Thumbnail Strip -->
+<div class="thumbnail-bar">
+  <div id="thumbnail-strip"></div>
+</div>
+
+<!-- Settings Bottom Sheet (mobile) -->
+<div class="settings-overlay" id="settings-overlay">
+  <div class="settings-backdrop" id="settings-backdrop"></div>
+  <div class="settings-sheet">
+    <div class="handle"></div>
+    <h3>설정</h3>
+    <div class="input-group">
+      <label>아이 이름</label>
+      <input type="text" id="m-input-firstName" placeholder="도현" />
+    </div>
+    <div class="input-group">
+      <label>부모 호칭</label>
+      <input type="text" id="m-input-parentNames" placeholder="엄마 아빠" />
+    </div>
+  </div>
+</div>
+
+<script src="js/bookPreviewApp.js"></script>
+</body>
+</html>
