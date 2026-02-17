@@ -434,7 +434,8 @@ function setupEvents() {
       document.querySelectorAll(`.version-btn[data-version="${btn.dataset.version}"]`)
         .forEach(b => b.classList.add('active'));
       currentVersion = btn.dataset.version;
-      currentPageIndex = 0;
+      const pages = getPages();
+      if (currentPageIndex >= pages.length) currentPageIndex = pages.length - 1;
       renderCarousel();
       renderThumbnails();
     });
