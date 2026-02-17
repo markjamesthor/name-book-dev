@@ -149,7 +149,7 @@ function getPages() {
   return [coverPage, ...config.versions[currentVersion].pages];
 }
 
-function computeChildPosition() {
+function computeEyeRatio() {
   if (!coverCropData || !coverCropData.keypoints) return null;
 
   const kps = coverCropData.keypoints;
@@ -164,25 +164,7 @@ function computeChildPosition() {
   const eyeL = findKp('left_eye');
   const eyeR = findKp('right_eye');
   if (eyeL === null && eyeR === null) return null;
-  const eyeY = eyeL !== null && eyeR !== null ? (eyeL + eyeR) / 2 : (eyeL || eyeR);
-
-  // 엉덩이 위치 (hip 우선, 없으면 knee)
-  const hipL = findKp('left_hip');
-  const hipR = findKp('right_hip');
-  const kneeL = findKp('left_knee');
-  const kneeR = findKp('right_knee');
-  let bottomY = null;
-  if (hipL !== null || hipR !== null) {
-    bottomY = hipL !== null && hipR !== null ? (hipL + hipR) / 2 : (hipL || hipR);
-  } else if (kneeL !== null || kneeR !== null) {
-    bottomY = kneeL !== null && kneeR !== null ? (kneeL + kneeR) / 2 : (kneeL || kneeR);
-  }
-  if (bottomY === null || bottomY - eyeY < 0.05) return null;
-
-  // 눈 = 페이지 50%, 엉덩이 = 페이지 100%
-  const h = 50 / (bottomY - eyeY);       // 이미지 높이 (컨테이너 %)
-  const t = 50 - eyeY * h;               // top offset (%)
-  return { height: h, top: t };
+  return eyeL !== null && eyeR !== null ? (eyeL + eyeR) / 2 : (eyeL || eyeR);
 }
 
 function buildCoverContent() {
@@ -205,13 +187,14 @@ function buildCoverContent() {
         </div>
       </div>`;
   } else if (coverPhotoURL) {
-    // 사진 배치 — 키포인트 기반 포지셔닝
-    const pos = computeChildPosition();
+    // 사진 배치 — width:100% + 눈 중앙 정렬
+    const eyeRatio = computeEyeRatio();
     let childStyle;
-    if (pos) {
-      childStyle = `height:${pos.height.toFixed(1)}%;top:${pos.top.toFixed(1)}%;left:50%;transform:translateX(-50%);position:absolute;`;
+    if (eyeRatio !== null) {
+      // top:50% + translateY(-eyeRatio%) → 눈이 페이지 정중앙
+      childStyle = `width:100%;position:absolute;left:0;top:50%;transform:translateY(-${(eyeRatio * 100).toFixed(1)}%);`;
     } else {
-      childStyle = 'max-height:70%;position:absolute;bottom:0;left:50%;transform:translateX(-50%);';
+      childStyle = 'width:100%;position:absolute;left:0;top:50%;transform:translateY(-40%);';
     }
 
     html += `<div class="cover-child-wrap"><img src="${coverPhotoURL}" style="${childStyle}" alt="아이 사진" /></div>`;
