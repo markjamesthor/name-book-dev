@@ -85,7 +85,7 @@ function cacheDom() {
 
 async function loadConfig() {
   try {
-    const resp = await fetch('configs/name.config.json');
+    const resp = await fetch('configs/name.config.json?t=' + Date.now());
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     config = await resp.json();
   } catch (e) {
