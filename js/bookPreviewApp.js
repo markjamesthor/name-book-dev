@@ -57,6 +57,7 @@ let variables = {};
 let isAnimating = false;
 let coverPhotoURL = null;   // 배경 제거된 사진 blob URL
 let isRemovingBg = false;   // 로딩 상태
+let coverLoadingText = '';  // 단계별 로딩 텍스트
 
 // ========== DOM ==========
 const els = {};
@@ -158,7 +159,7 @@ function buildCoverContent() {
     photoArea = `
       <div class="cover-loading">
         <div class="cover-spinner"></div>
-        <div class="cover-loading-text">배경을 지우는 중...</div>
+        <div class="cover-loading-text">${coverLoadingText || '처리 중...'}</div>
       </div>`;
   } else if (coverPhotoURL) {
     photoArea = `
@@ -472,17 +473,67 @@ function renderThumbnails() {
   });
 }
 
-// ========== Cover Photo (remove.bg) ==========
+// ========== Cover Photo (smart crop + remove.bg) ==========
+
+const SMART_CROP_API = 'http://localhost:5001';
+
+async function smartCropPerson(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const resp = await fetch(`${SMART_CROP_API}/smart-crop?crop_mode=person&seg_size=512`, {
+    method: 'POST',
+    body: formData
+  });
+  if (!resp.ok) return null;
+  return await resp.json();
+}
+
+function cropImageOnCanvas(file, coords) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = coords.width;
+      canvas.height = coords.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, coords.x, coords.y, coords.width, coords.height, 0, 0, coords.width, coords.height);
+      canvas.toBlob((blob) => {
+        if (blob) resolve(blob);
+        else reject(new Error('크롭 Blob 생성 실패'));
+      }, 'image/jpeg', 0.95);
+    };
+    img.onerror = reject;
+    img.src = URL.createObjectURL(file);
+  });
+}
 
 async function handleCoverPhoto(file) {
   if (isRemovingBg) return;
   isRemovingBg = true;
+  coverLoadingText = '인물을 감지하는 중...';
   renderCarousel();
   renderThumbnails();
 
   try {
+    // Step 1: 스마트 크롭 — 인물 영역 감지
+    let fileToSend = file;
+    try {
+      const cropResult = await smartCropPerson(file);
+      if (cropResult && cropResult.cropped && cropResult.crop) {
+        console.log('스마트 크롭 적용:', cropResult.crop);
+        const croppedBlob = await cropImageOnCanvas(file, cropResult.crop);
+        fileToSend = new File([croppedBlob], file.name, { type: 'image/jpeg' });
+      }
+    } catch (e) {
+      console.warn('스마트 크롭 스킵 (서버 미연결):', e.message);
+    }
+
+    // Step 2: remove.bg 배경 제거
+    coverLoadingText = '배경을 지우는 중...';
+    renderCarousel();
+
     const formData = new FormData();
-    formData.append('image_file', file);
+    formData.append('image_file', fileToSend);
     formData.append('size', 'auto');
 
     const resp = await fetch('https://api.remove.bg/v1.0/removebg', {
@@ -504,6 +555,7 @@ async function handleCoverPhoto(file) {
     alert('배경 제거에 실패했습니다.\n' + e.message);
   } finally {
     isRemovingBg = false;
+    coverLoadingText = '';
     renderCarousel();
     renderThumbnails();
   }
