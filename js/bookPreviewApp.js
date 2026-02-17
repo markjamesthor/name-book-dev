@@ -55,6 +55,8 @@ let currentVersion = 'A';
 let currentPageIndex = 0;
 let variables = {};
 let isAnimating = false;
+let coverPhotoURL = null;   // 배경 제거된 사진 blob URL
+let isRemovingBg = false;   // 로딩 상태
 
 // ========== DOM ==========
 const els = {};
@@ -136,7 +138,51 @@ function syncInputs(source) {
 // ========== Carousel ==========
 
 function getPages() {
-  return config.versions[currentVersion].pages;
+  const coverPage = {
+    scene: '표지',
+    title: '앞표지',
+    isCover: true,
+    bgGradient: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+    textColor: 'white',
+    textPosition: 'center'
+  };
+  return [coverPage, ...config.versions[currentVersion].pages];
+}
+
+function buildCoverContent() {
+  const title = config.bookMeta.title;
+  const subtitle = config.bookMeta.subtitle;
+
+  let photoArea = '';
+  if (isRemovingBg) {
+    photoArea = `
+      <div class="cover-loading">
+        <div class="cover-spinner"></div>
+        <div class="cover-loading-text">배경을 지우는 중...</div>
+      </div>`;
+  } else if (coverPhotoURL) {
+    photoArea = `
+      <div class="cover-photo-result" id="cover-photo-result">
+        <img class="cover-photo-img" src="${coverPhotoURL}" alt="아이 사진" />
+        <div class="cover-photo-hint">탭하여 사진 변경</div>
+      </div>`;
+  } else {
+    photoArea = `
+      <div class="cover-photo-zone" id="cover-upload-zone">
+        <div class="upload-icon">📷</div>
+        <div class="upload-text">사진을 선택하세요</div>
+      </div>`;
+  }
+
+  return `
+    <div class="slide-img-wrap">
+      <div class="page-bg-gradient" style="background:linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)"></div>
+    </div>
+    <div class="cover-layout">
+      <div class="cover-title">${title}</div>
+      <div class="cover-subtitle">${subtitle.replace(/\s/g, '<br>')}</div>
+      ${photoArea}
+    </div>`;
 }
 
 function buildSlideContent(pageIndex) {
@@ -144,6 +190,10 @@ function buildSlideContent(pageIndex) {
   if (pageIndex < 0 || pageIndex >= pages.length) return '';
 
   const page = pages[pageIndex];
+
+  // Cover page — special rendering
+  if (page.isCover) return buildCoverContent();
+
   let imgContent = '';
   if (page.illustration && config.illustrations[page.illustration]) {
     const imgPath = config.illustrations[page.illustration];
@@ -204,7 +254,7 @@ function updatePageInfo() {
   const canPrev = currentPageIndex > 0;
   const canNext = currentPageIndex < pages.length - 1;
 
-  const label = `${page.scene}. ${page.title}`;
+  const label = page.isCover ? page.title : `${page.scene}. ${page.title}`;
   const counter = `${currentPageIndex + 1} / ${pages.length}`;
 
   els.pageTitle.textContent = label;
@@ -408,7 +458,9 @@ function renderThumbnails() {
     const thumb = document.createElement('div');
     thumb.className = `thumb ${i === currentPageIndex ? 'active' : ''}`;
 
-    if (page.illustration && config.illustrations[page.illustration]) {
+    if (page.isCover) {
+      thumb.innerHTML = `<div class="thumb-gradient" style="background:linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)"></div><div class="thumb-cover">표지</div>`;
+    } else if (page.illustration && config.illustrations[page.illustration]) {
       const imgPath = config.illustrations[page.illustration];
       thumb.innerHTML = `<img src="${imgPath}" alt="${page.title}" /><span class="thumb-label">${page.scene}</span>`;
     } else {
@@ -417,6 +469,61 @@ function renderThumbnails() {
 
     thumb.addEventListener('click', () => jumpToPage(i));
     strip.appendChild(thumb);
+  });
+}
+
+// ========== Cover Photo (remove.bg) ==========
+
+async function handleCoverPhoto(file) {
+  if (isRemovingBg) return;
+  isRemovingBg = true;
+  renderCarousel();
+  renderThumbnails();
+
+  try {
+    const formData = new FormData();
+    formData.append('image_file', file);
+    formData.append('size', 'auto');
+
+    const resp = await fetch('https://api.remove.bg/v1.0/removebg', {
+      method: 'POST',
+      headers: { 'X-Api-Key': 'D8B2GQyMvmfbXXfH2mZukPi4' },
+      body: formData
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error(`remove.bg 오류: ${resp.status} ${errText}`);
+    }
+
+    const blob = await resp.blob();
+    if (coverPhotoURL) URL.revokeObjectURL(coverPhotoURL);
+    coverPhotoURL = URL.createObjectURL(blob);
+  } catch (e) {
+    console.error('배경 제거 실패:', e);
+    alert('배경 제거에 실패했습니다.\n' + e.message);
+  } finally {
+    isRemovingBg = false;
+    renderCarousel();
+    renderThumbnails();
+  }
+}
+
+function setupCoverEvents() {
+  const fileInput = document.getElementById('cover-photo-input');
+  if (!fileInput) return;
+
+  fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (file) handleCoverPhoto(file);
+    fileInput.value = ''; // reset so same file can be re-selected
+  });
+
+  // Delegate click on cover upload zone / photo result
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('#cover-upload-zone') || e.target.closest('#cover-photo-result')) {
+      fileInput.click();
+    }
   });
 }
 
@@ -465,5 +572,6 @@ function setupEvents() {
 document.addEventListener('DOMContentLoaded', () => {
   cacheDom();
   setupEvents();
+  setupCoverEvents();
   loadConfig();
 });
