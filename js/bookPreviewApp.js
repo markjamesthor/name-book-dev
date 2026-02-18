@@ -251,7 +251,8 @@ function buildCoverContent() {
 
   // 배경: 다른 페이지와 동일한 구조 (page-bg-blur + page-bg-img)
   let imgContent = `<div class="page-bg-blur" style="background-image:url('${bgPath}')"></div>
-    <img class="page-bg-img" src="${bgPath}" alt="커버" />`;
+    <img class="page-bg-img" src="${bgPath}" alt="커버" />
+    <div class="cover-front-wrap"><img class="cover-front-img" src="NAME/cover_front.png" /></div>`;
 
   // 토글: coverPhotoOptions가 존재하면 항상 표시 (로딩 중인 항목은 로딩 표시)
   let toggleHtml = '';
@@ -408,6 +409,15 @@ function positionCoverChild() {
     childWrap.style.top = `${imgY}px`;
     childWrap.style.width = `${imgW}px`;
     childWrap.style.height = `${imgH}px`;
+  }
+
+  // 전경 레이어 위치 (cover_front.png)
+  const frontWrap = wrap.querySelector('.cover-front-wrap');
+  if (frontWrap) {
+    frontWrap.style.left = `${imgX}px`;
+    frontWrap.style.top = `${imgY}px`;
+    frontWrap.style.width = `${imgW}px`;
+    frontWrap.style.height = `${imgH}px`;
   }
 
   // 타이틀 위치

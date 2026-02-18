@@ -441,6 +441,21 @@
   .cover-photo-zone .upload-icon { font-size: 36px; opacity: 0.5; }
   .cover-photo-zone .upload-text { font-size: 13px; color: rgba(255,255,255,0.5); }
 
+  /* 전경 레이어 (cover_front.png — 잔디 등) */
+  .cover-front-wrap {
+    position: absolute;
+    overflow: hidden;
+    z-index: 2;
+    pointer-events: none;
+  }
+  .cover-front-img {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: auto;
+  }
+
   /* 아이 사진 래퍼: 배경 이미지 실제 렌더 영역에 맞춤 (JS로 크기 설정) */
   .cover-child-wrap {
     position: absolute;
@@ -463,17 +478,20 @@
     min-height: 36px;
   }
   .cover-action-btn {
-    background: transparent;
-    color: rgba(255,255,255,0.45);
-    border: none;
-    padding: 4px 12px;
-    font-size: 11px;
+    background: rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.6);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 16px;
+    padding: 5px 16px;
+    font-size: 12px;
     cursor: pointer;
     white-space: nowrap;
-    transition: color 0.15s;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
   }
   .cover-action-btn:hover, .cover-action-btn:active {
-    color: rgba(255,255,255,0.8);
+    background: rgba(255,255,255,0.15);
+    color: rgba(255,255,255,0.9);
+    border-color: rgba(255,255,255,0.3);
   }
 
   /* 위치 편집 모드 UI */
