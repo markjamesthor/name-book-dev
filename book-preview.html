@@ -5,6 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>노미네 왕국 — Book Preview</title>
 <style>
+  /* ===== Font ===== */
+  @font-face {
+    font-family: 'BMDOHYEON';
+    src: url('NAME/BMDOHYEON_ttf.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+  }
+
   /* ===== Reset & Base ===== */
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -174,21 +183,20 @@
     position: relative;
     box-shadow: 0 4px 30px rgba(0,0,0,0.6);
     background: #111;
+    touch-action: pan-y; /* 브라우저 기본 핀치 줌 방지, 수직 스크롤만 허용 */
   }
 
   /* ===== Carousel ===== */
   .carousel-track {
     display: flex;
-    width: 300%;
     height: 100%;
-    will-change: transform;
   }
   .carousel-slide {
-    width: 33.333%;
     height: 100%;
-    flex-shrink: 0;
+    flex: none;
     position: relative;
     overflow: hidden;
+    /* width는 JS에서 뷰어 너비와 동일하게 설정 */
   }
 
   /* Image wrapper — fills slide on desktop */
@@ -196,6 +204,7 @@
     position: absolute;
     inset: 0;
     overflow: hidden;
+    transform-origin: center center;
   }
 
   /* Blurred backdrop (hidden on desktop, shown on mobile) */
@@ -432,21 +441,73 @@
   .cover-photo-zone .upload-icon { font-size: 36px; opacity: 0.5; }
   .cover-photo-zone .upload-text { font-size: 13px; color: rgba(255,255,255,0.5); }
 
-  /* 아이 사진 (slide-img-wrap 내부, 배경 위에 오버레이) */
+  /* 아이 사진 래퍼: 배경 이미지 실제 렌더 영역에 맞춤 (JS로 크기 설정) */
+  .cover-child-wrap {
+    position: absolute;
+    overflow: hidden;
+    z-index: 1;
+  }
+  /* 아이 사진 (cover-child-wrap 내부) */
   .cover-child-img {
     position: absolute;
-    width: 100%;
-    left: 0;
-    z-index: 1;
     filter: drop-shadow(0 4px 24px rgba(0,0,0,0.6));
   }
 
-  /* 사진 변경 클릭 오버레이 */
-  .cover-click-overlay {
-    position: absolute;
-    inset: 0;
-    z-index: 2;
+  /* 액션 메뉴 (위치변경 / 사진변경) — 토글 아래 */
+  .cover-action-menu {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    padding: 10px 16px 0;
+  }
+  .cover-action-btn {
+    background: transparent;
+    color: rgba(255,255,255,0.45);
+    border: none;
+    padding: 4px 12px;
+    font-size: 11px;
     cursor: pointer;
+    white-space: nowrap;
+    transition: color 0.15s;
+  }
+  .cover-action-btn:hover, .cover-action-btn:active {
+    color: rgba(255,255,255,0.8);
+  }
+
+  /* 위치 편집 모드 UI */
+  .cover-pos-edit-ui {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 10px 0 0;
+  }
+  .cover-pos-hint {
+    font-size: 12px;
+    color: rgba(255,255,255,0.7);
+    font-weight: 600;
+  }
+  .cover-pos-buttons {
+    display: flex;
+    gap: 10px;
+  }
+  .cover-pos-btn {
+    background: transparent;
+    color: rgba(255,255,255,0.55);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 16px;
+    padding: 5px 18px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .cover-pos-btn:hover, .cover-pos-btn:active {
+    color: rgba(255,255,255,0.85);
+    border-color: rgba(255,255,255,0.4);
+  }
+  .cover-pos-done {
+    color: rgba(139,142,255,0.85);
+    border-color: rgba(139,142,255,0.4);
   }
 
   /* 로딩 */
@@ -471,6 +532,89 @@
   .cover-loading-text {
     font-size: 13px;
     color: rgba(255,255,255,0.6);
+  }
+
+  /* 커버 타이틀 (상단) */
+  .cover-top-title {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
+    text-align: center;
+    padding: 36px 20px 16px;
+    background: linear-gradient(180deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.25) 60%, transparent 100%);
+  }
+  .cover-top-title-text {
+    font-family: 'BMDOHYEON', sans-serif;
+    font-size: 28px;
+    color: white;
+    text-shadow: 0 2px 12px rgba(0,0,0,0.7);
+    letter-spacing: 1px;
+  }
+
+  .model-loading-spinner {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 36px;
+    height: 36px;
+    border: 3px solid rgba(255,255,255,0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: model-spin 0.8s linear infinite;
+  }
+  @keyframes model-spin {
+    to { transform: translate(-50%, -50%) rotate(360deg); }
+  }
+
+  /* Model toggle switch */
+  .model-toggle-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 10px 0 0;
+  }
+  .model-toggle-hint {
+    font-size: 12px;
+    color: rgba(255,255,255,0.7);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .model-toggle {
+    display: flex;
+    background: rgba(0,0,0,0.5);
+    border-radius: 20px;
+    padding: 3px;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  .model-toggle-option {
+    padding: 6px 16px;
+    border-radius: 17px;
+    color: rgba(255,255,255,0.6);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    user-select: none;
+  }
+  .model-toggle-option.active {
+    background: rgba(255,255,255,0.25);
+    color: #fff;
+  }
+  .model-toggle-loading {
+    opacity: 0.35;
+    position: relative;
+  }
+  .model-toggle-loading.active {
+    animation: toggle-pulse 1s ease-in-out infinite;
+  }
+  @keyframes toggle-pulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 0.7; }
   }
 
   /* Cover thumbnail */
@@ -538,6 +682,7 @@
       position: relative;
       flex: 1;
       min-height: 0;
+      overflow: hidden;
     }
 
     /* Blurred backdrop + contain for full illustration */
@@ -576,7 +721,7 @@
 
     /* Mobile text sizing */
     .page-text-overlay { padding: 16px 20px; }
-    .page-story-text { font-size: 13px; line-height: 2.0; }
+    .page-story-text { font-size: 15px; line-height: 2.0; }
 
     /* ===== Mobile Nav Bar ===== */
     .mobile-nav-bar {
@@ -643,10 +788,17 @@
     }
     #thumbnail-strip { gap: 6px; }
 
+    /* Cover title — mobile */
+    .cover-top-title { padding: 28px 16px 12px; }
+    .cover-top-title-text { font-size: 22px; }
+
     /* Cover — mobile */
     .cover-title { font-size: 22px; }
     .cover-subtitle { font-size: 12px; }
     .cover-photo-zone { width: 140px; height: 170px; }
+
+    /* 모델 선택 — mobile */
+    .model-toggle-hint { font-size: 12px; }
 
     /* Bottom sheet inputs */
     .settings-sheet .input-group { margin-bottom: 14px; }
