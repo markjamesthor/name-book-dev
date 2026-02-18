@@ -885,7 +885,7 @@ function renderThumbnails() {
 // ========== Cover Photo (smart crop + remove.bg) ==========
 
 const SMART_CROP_API = location.hostname.includes('github.io')
-  ? 'https://cloudy-montana-shut-ebooks.trycloudflare.com'
+  ? 'https://ai.monviestory.co.kr'
   : 'http://172.30.1.80:5001';
 
 async function smartCropPerson(file) {
