@@ -885,8 +885,8 @@ function renderThumbnails() {
 // ========== Cover Photo (smart crop + remove.bg) ==========
 
 const SMART_CROP_API = location.hostname.includes('github.io')
-  ? 'https://cleveland-factors-mazda-removable.trycloudflare.com'
-  : `http://${location.hostname}:5001`;
+  ? 'https://cloudy-montana-shut-ebooks.trycloudflare.com'
+  : 'http://172.30.1.80:5001';
 
 async function smartCropPerson(file) {
   const formData = new FormData();
@@ -1004,6 +1004,7 @@ async function handleCoverPhoto(file) {
       renderCarousel();
     };
 
+    // 병렬 실행: 3개 모델 동시 요청
     const promises = BG_REMOVE_MODELS.map(m => {
       const fd = new FormData();
       fd.append('file', fileToSend);
@@ -1011,7 +1012,6 @@ async function handleCoverPhoto(file) {
         .then(r => extractAndShow(r, m.key))
         .catch(e => console.warn(`${m.key} 실패:`, e));
     });
-
     await Promise.allSettled(promises);
 
     // 모두 실패한 경우
