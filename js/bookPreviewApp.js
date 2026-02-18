@@ -250,9 +250,10 @@ function buildCoverContent() {
   const titleHtml = `<div class="cover-top-title"${titleStyle ? ` style="${titleStyle}"` : ''}><div class="cover-top-title-text">${coverTitle}</div></div>`;
 
   // 배경: 다른 페이지와 동일한 구조 (page-bg-blur + page-bg-img)
+  const frontStyle = getCoverLayoutStyle();
   let imgContent = `<div class="page-bg-blur" style="background-image:url('${bgPath}')"></div>
     <img class="page-bg-img" src="${bgPath}" alt="커버" />
-    <div class="cover-front-wrap"><img class="cover-front-img" src="NAME/cover_front.png" /></div>`;
+    <div class="cover-front-wrap"${frontStyle ? ` style="${frontStyle}"` : ''}><img class="cover-front-img" src="NAME/cover_front.png" /></div>`;
 
   // 토글: coverPhotoOptions가 존재하면 항상 표시 (로딩 중인 항목은 로딩 표시)
   let toggleHtml = '';
@@ -360,9 +361,14 @@ function getCoverTitleStyle() {
 }
 
 function positionCoverChild() {
-  const currentSlide = document.querySelector('.carousel-slide:nth-child(2)');
-  if (!currentSlide) return;
-  const wrap = currentSlide.querySelector('.slide-img-wrap');
+  // 커버 슬라이드를 트랙 내 위치에 관계없이 찾음
+  const track = document.getElementById('carousel-track');
+  if (!track) return;
+  let wrap = null;
+  for (const slide of track.children) {
+    const w = slide.querySelector('.slide-img-wrap');
+    if (w && w.querySelector('.cover-top-title')) { wrap = w; break; }
+  }
   if (!wrap) return;
   const bgImg = wrap.querySelector('.page-bg-img');
   if (!bgImg) return;
@@ -560,6 +566,7 @@ function goPage(delta) {
     currentPageIndex = next;
     pendingNormalize = { direction: delta };
     updatePageInfo();
+    positionCoverChild();
     isAnimating = false;
   };
 
@@ -837,6 +844,7 @@ function setupCarouselTouch(track) {
         currentPageIndex++;
         pendingNormalize = { direction: 1 };
         updatePageInfo();
+        positionCoverChild();
         isAnimating = false;
       };
       track.addEventListener('transitionend', finalize, { once: true });
@@ -854,6 +862,7 @@ function setupCarouselTouch(track) {
         currentPageIndex--;
         pendingNormalize = { direction: -1 };
         updatePageInfo();
+        positionCoverChild();
         isAnimating = false;
       };
       track.addEventListener('transitionend', finalize, { once: true });
