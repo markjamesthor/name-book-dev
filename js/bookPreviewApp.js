@@ -885,7 +885,7 @@ function renderThumbnails() {
 // ========== Cover Photo (smart crop + remove.bg) ==========
 
 const SMART_CROP_API = location.hostname.includes('github.io')
-  ? 'https://increasing-decade-penguin-britney.trycloudflare.com'
+  ? 'https://cleveland-factors-mazda-removable.trycloudflare.com'
   : `http://${location.hostname}:5001`;
 
 async function smartCropPerson(file) {
