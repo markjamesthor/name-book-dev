@@ -12,17 +12,18 @@
     "parentNames": "엄마 아빠"
   },
   "illustrations": {
-    "castle": "NAME/u9138982156_extreme_wide_shot_inside_a_grand_medieval_castle_th_c710f602-1e9c-4600-865c-35033745aace.webp",
-    "shadow_attack": "NAME/u9138982156_extreme_wide_shot_bright_sunny_day_in_a_fairy_tale__cf5fc19c-6bcc-4e3f-9f5b-ecb3d3da6c93.webp",
-    "ancient_stair": "NAME/u9138982156_a_king_and_queen_halfway_down_a_massive_ancient_spi_87c4ba28-0707-4240-875f-436f24e37351-34.webp",
-    "magic_book": "NAME/u9138982156_close-up_of_an_enormous_ancient_magical_book_open_o_ca011c0b-c85a-4131-b96e-5a5153f8a94b.webp",
-    "forest_run": "NAME/u9138982156_birds_eye_view_looking_straight_down_a_king_and_que_906ba373-323e-4d51-90fd-52d71686bb8e.webp",
-    "forest_run_queen": "NAME/u9138982156_birds_eye_view_looking_straight_down_a_queen_with_b_cbdf5715-9da2-4614-adda-42d279947615.webp",
-    "golden_star": "NAME/u9138982156_a_gigantic_magnificent_golden_star_high_in_the_dark_53b47130-fffa-4126-97c5-2c54ed734fee.webp",
-    "elephant": "NAME/u9138982156_Dark_textured_indigo_forest_background_--ar_32_--v__11ef44ea-9991-4e9d-b47e-fcd7e1b3e7b4.webp",
-    "elephant_close": "NAME/u9138982156_glowing_magical_forest_ground_soft_cyan_light_on_th_6a7eea50-0216-4af6-8bf7-a22fbd23ad41.webp",
-    "cauldron": "NAME/u9138982156_A_whimsical_storybook_illustration_of_a_rustic_anci_22f1727d-5a21-4005-adbe-d49bb773279c.webp",
-    "light_gate": "NAME/u9138982156_extreme_wide_shot_seen_from_behind_two_tiny_figures_ba9a564a-e227-478e-8326-257632210b2e.webp"
+    "castle": "NAME/u9138982156_extreme_wide_shot_inside_a_grand_medieval_castle_th_c710f602-1e9c-4600-865c-35033745aace.png",
+    "shadow_attack": "NAME/u9138982156_extreme_wide_shot_bright_sunny_day_in_a_fairy_tale__cf5fc19c-6bcc-4e3f-9f5b-ecb3d3da6c93.png",
+    "ancient_stair": "NAME/u9138982156_a_king_and_queen_halfway_down_a_massive_ancient_spi_87c4ba28-0707-4240-875f-436f24e37351-34.png",
+    "magic_book": "NAME/u9138982156_close-up_of_an_enormous_ancient_magical_book_open_o_ca011c0b-c85a-4131-b96e-5a5153f8a94b.png",
+    "forest_run": "NAME/u9138982156_birds_eye_view_looking_straight_down_a_king_and_que_906ba373-323e-4d51-90fd-52d71686bb8e.png",
+    "forest_run_queen": "NAME/u9138982156_birds_eye_view_looking_straight_down_a_queen_with_b_cbdf5715-9da2-4614-adda-42d279947615.png",
+    "golden_star": "NAME/u9138982156_a_gigantic_magnificent_golden_star_high_in_the_dark_53b47130-fffa-4126-97c5-2c54ed734fee.png",
+    "elephant": "NAME/u9138982156_Dark_textured_indigo_forest_background_--ar_32_--v__11ef44ea-9991-4e9d-b47e-fcd7e1b3e7b4.png",
+    "elephant_close": "NAME/u9138982156_glowing_magical_forest_ground_soft_cyan_light_on_th_6a7eea50-0216-4af6-8bf7-a22fbd23ad41.png",
+    "cauldron": "NAME/u9138982156_A_whimsical_storybook_illustration_of_a_rustic_anci_22f1727d-5a21-4005-adbe-d49bb773279c.png",
+    "light_gate": "NAME/u9138982156_extreme_wide_shot_seen_from_behind_two_tiny_figures_ba9a564a-e227-478e-8326-257632210b2e.png",
+    "blank": "NAME/blank.png"
   },
   "versions": {
     "A": {
@@ -32,8 +33,7 @@
         {
           "scene": 0,
           "title": "프롤로그",
-          "illustration": null,
-          "bgGradient": "linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)",
+          "illustration": "blank",
           "textColor": "white",
           "textPosition": "center",
           "text": "이 이야기는 {name}가 너무 어려서 기억 못할 때 일어난 일이야."
@@ -41,8 +41,7 @@
         {
           "scene": 1,
           "title": "노미네 왕국",
-          "illustration": null,
-          "bgGradient": "linear-gradient(180deg, #1A237E 0%, #283593 40%, #3E4C8A 60%, #4A6741 80%, #2E7D32 100%)",
+          "illustration": "blank",
           "textColor": "white",
           "textPosition": "center",
           "text": "{name}가 태어나기도 전,\n\n{parentNames}는 노미네 왕국의 왕과 왕비였어.\n\n요리사는 보글보글, 가수는 랄라. 여기선 모두 이름표가 있대요."
@@ -106,8 +105,7 @@
         {
           "scene": 9,
           "title": "세 번째 재료: 거인의 눈물",
-          "illustration": null,
-          "bgGradient": "linear-gradient(180deg, #2d3436 0%, #636e72 40%, #b2bec3 100%)",
+          "illustration": "blank",
           "textColor": "white",
           "textPosition": "center",
           "text": "마지막은 커다란 거인이에요.\n눈에서 눈물이 뚝, 뚝.\n손으로 받으니 따끈따끈해요.\n와, 드디어 재료를 다 모았어요!"
@@ -139,8 +137,7 @@
         {
           "scene": 13,
           "title": "잃어버린 지팡이",
-          "illustration": null,
-          "bgGradient": "linear-gradient(180deg, #0c0c1d 0%, #1a1a3e 50%, #2d2d5e 100%)",
+          "illustration": "blank",
           "textColor": "white",
           "textPosition": "center",
           "text": "문으로 쏙 들어갔어요.\n괴물 손이 문틈으로 스윽!\n있는 힘껏 문을 쾅! 닫았어요.\n어라? 요술 지팡이가 툭 떨어졌네요.\n문은 굳게 닫혀버렸어요."
@@ -148,8 +145,7 @@
         {
           "scene": 14,
           "title": "우리의 비밀",
-          "illustration": null,
-          "bgGradient": "linear-gradient(135deg, #ffecd2 0%, #fcb69f 50%, #ff9a9e 100%)",
+          "illustration": "blank",
           "textColor": "white",
           "textPosition": "center",
           "text": "여기는 인간 세상.\n이제 괴물은 못 쫓아와요. 휴우~\n지팡이는 없지만 괜찮아.\n우리 {name}가 최고의 마법이니까.\n사랑해, 우리 {firstName}아."
@@ -157,8 +153,7 @@
         {
           "scene": 15,
           "title": "에필로그",
-          "illustration": null,
-          "bgGradient": "linear-gradient(180deg, #1a1a2e 0%, #2d1b69 40%, #7c3aed 70%, #c4b5fd 100%)",
+          "illustration": "blank",
           "textColor": "white",
           "textPosition": "center",
           "text": "나중에 알게된 사실인데,\n{name}가 이름 없이 태어난 이유는…\n무한한 가능성을 가지고 태어나서였어요."
@@ -172,8 +167,7 @@
         {
           "scene": 0,
           "title": "프롤로그",
-          "illustration": null,
-          "bgGradient": "linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)",
+          "illustration": "blank",
           "textColor": "white",
           "textPosition": "center",
           "text": "이 이야기는 {name}가 너무 어려서 기억 못할 때 일어난 일이예요."
@@ -181,8 +175,7 @@
         {
           "scene": 1,
           "title": "노미네 왕국",
-          "illustration": null,
-          "bgGradient": "linear-gradient(180deg, #1A237E 0%, #283593 40%, #3E4C8A 60%, #4A6741 80%, #2E7D32 100%)",
+          "illustration": "blank",
           "textColor": "white",
           "textPosition": "center",
           "text": "여기는 모두가 이름대로 사는 노미네 왕국이에요.\n요리사의 이름은 보글보글, 가수의 이름은 랄라.\n모두 자기 이름처럼 살아가죠.\n{parentNames}는 노미네 왕국의 왕과 왕비였어요."
@@ -246,8 +239,7 @@
         {
           "scene": 9,
           "title": "세 번째 재료: 거인의 눈물",
-          "illustration": null,
-          "bgGradient": "linear-gradient(180deg, #2d3436 0%, #636e72 40%, #b2bec3 100%)",
+          "illustration": "blank",
           "textColor": "white",
           "textPosition": "center",
           "text": "마지막으로 숲을 지키는 외로운 거인을 만났어요.\n거인의 눈에서 맑은 눈물이 떨어졌죠.\n눈물은 보석처럼 맑고 따뜻했어요.\n\"차가운 세상에서도 따뜻한 마음을 가진 사람이 되렴.\"\n드디어, 모든 재료가 모였어요!"
@@ -279,8 +271,7 @@
         {
           "scene": 13,
           "title": "잃어버린 지팡이",
-          "illustration": null,
-          "bgGradient": "linear-gradient(180deg, #0c0c1d 0%, #1a1a3e 50%, #2d2d5e 100%)",
+          "illustration": "blank",
           "textColor": "white",
           "textPosition": "center",
           "text": "가족은 간신히 문 안으로 뛰어들었어요.\n괴물의 손이 끝까지 쫓아왔지만, 온 힘을 다해 문을 닫았죠.\n그런데 너무 서두른 탓일까요?\n그만 요술 지팡이를 문밖에 떨어뜨리고 말았어요.\n이제 다시는 요정 나라로 돌아갈 수 없게 된 거예요."
@@ -288,8 +279,7 @@
         {
           "scene": 14,
           "title": "우리의 비밀",
-          "illustration": null,
-          "bgGradient": "linear-gradient(135deg, #ffecd2 0%, #fcb69f 50%, #ff9a9e 100%)",
+          "illustration": "blank",
           "textColor": "white",
           "textPosition": "center",
           "text": "이곳은 인간 세상이에요. 다행히 괴물은 사라졌죠.\n{parentNames}는 작은 비밀을 간직하기로 했어요.\n우리가 왕과 왕비였다는 것,\n그리고 네가 요정 나라 아이라는 것을요.\n지팡이는 잃어버렸지만 슬프지 않아요.\n우리에게는 '{firstName}'이라는 가장 큰 보물이 있으니까요.\n우리는 여기서 오래오래 행복할 거야. 사랑해."
@@ -297,8 +287,7 @@
         {
           "scene": 15,
           "title": "에필로그",
-          "illustration": null,
-          "bgGradient": "linear-gradient(180deg, #1a1a2e 0%, #2d1b69 40%, #7c3aed 70%, #c4b5fd 100%)",
+          "illustration": "blank",
           "textColor": "white",
           "textPosition": "center",
           "text": "나중에 알게된 사실인데,\n{name}가 이름 없이 태어난 이유는…\n무한한 가능성을 가지고 태어나서였어요."
