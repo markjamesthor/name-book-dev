@@ -135,6 +135,7 @@ except ImportError:
 
 # remove.bg API 설정
 REMOVEBG_API_KEY = os.environ.get("REMOVEBG_API_KEY", "D8B2GQyMvmfbXXfH2mZukPi4")
+REMOVEBG_ENABLED = os.environ.get("REMOVEBG_ENABLED", "false").lower() == "true"
 
 # 2. 모델 설정 (Lazy Loading)
 # 지원되는 BiRefNet 모델들 (모두 로컬)
@@ -473,6 +474,8 @@ async def remove_background(
         original_w, original_h = image.size
 
         if model == "removebg":
+            if not REMOVEBG_ENABLED:
+                raise HTTPException(status_code=403, detail="removebg API가 비활성화되어 있습니다. REMOVEBG_ENABLED=true로 설정하세요.")
             # remove.bg API 호출 — HEIC 등 비표준 포맷은 JPEG로 변환하여 전송
             buf = io.BytesIO()
             image.save(buf, format="JPEG", quality=95)

@@ -1321,10 +1321,14 @@ async function processCandidate(candidate) {
     syncAndRender();
 
     const extractAndApply = async (resp, modelKey) => {
-      if (!resp.ok) return;
+      if (!resp.ok) {
+        console.warn(`[${modelKey}] 서버 응답 실패: ${resp.status} ${resp.statusText}`);
+        return;
+      }
       const cropX = parseInt(resp.headers.get('X-Crop-X') || '0');
       const cropY = parseInt(resp.headers.get('X-Crop-Y') || '0');
       const blob = await resp.blob();
+      console.log(`[${modelKey}] 응답 수신: ${blob.size} bytes`);
 
       // Update placeholder thumbnail with actual image from server result
       // Center on eye midpoint if keypoints available
@@ -1381,9 +1385,14 @@ async function processCandidate(candidate) {
       }
 
       let url;
-      if (candidate.cropData && candidate.cropData.refWidth && (cropX > 0 || cropY > 0)) {
-        url = await padImageToRef(blob, cropX, cropY, candidate.cropData.refWidth, candidate.cropData.refHeight);
-      } else {
+      try {
+        if (candidate.cropData && candidate.cropData.refWidth && (cropX > 0 || cropY > 0)) {
+          url = await padImageToRef(blob, cropX, cropY, candidate.cropData.refWidth, candidate.cropData.refHeight);
+        } else {
+          url = URL.createObjectURL(blob);
+        }
+      } catch (padErr) {
+        console.warn(`[${modelKey}] padImageToRef 실패, 원본 사용:`, padErr.message);
         url = URL.createObjectURL(blob);
       }
 
@@ -1407,7 +1416,7 @@ async function processCandidate(candidate) {
       fd.append('file', fileToSend);
       return fetch(`${SMART_CROP_API}/remove-bg?model=${m.key}`, { method: 'POST', body: fd })
         .then(r => extractAndApply(r, m.key))
-        .catch(e => console.warn(`${m.key} 실패:`, e));
+        .catch(e => console.warn(`[${m.key}] fetch 실패:`, e.message));
     });
     await Promise.allSettled(promises);
 
@@ -1487,22 +1496,21 @@ async function handleCoverPhotos(files) {
 
 function selectCoverModel(modelKey) {
   if (!coverPhotoOptions) return;
-  selectedModelKey = modelKey;
-
   const chosen = coverPhotoOptions[modelKey];
-  if (chosen) {
-    coverPhotoURL = chosen.url;
-    const childImg = document.querySelector('.cover-child-img');
-    if (childImg) {
-      childImg.src = chosen.url;
-      applyCoverManualOffset(childImg);
-      const layout = document.querySelector('.cover-layout');
-      if (layout) layout.remove();
-    } else {
-      renderCarousel();
-    }
+  // Not loaded yet — ignore click
+  if (!chosen) return;
+
+  selectedModelKey = modelKey;
+  coverPhotoURL = chosen.url;
+  const childImg = document.querySelector('.cover-child-img');
+  if (childImg) {
+    childImg.src = chosen.url;
+    applyCoverManualOffset(childImg);
+    const layout = document.querySelector('.cover-layout');
+    if (layout) layout.remove();
+  } else {
+    renderCarousel();
   }
-  // Model not loaded yet — keep current photo, just update selectedModelKey
   // Update toggle active state + slide indicator
   document.querySelectorAll('.model-toggle-option').forEach(el => {
     el.classList.toggle('active', el.dataset.model === modelKey);
