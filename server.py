@@ -455,14 +455,15 @@ async def remove_background(
             detail=f"파일이 너무 큽니다. 최대 {MAX_FILE_SIZE // (1024*1024)}MB까지 허용됩니다."
         )
 
-    # 3. 이미지 유효성 검증
+    # 3. 이미지 유효성 검증 (to_thread로 이벤트 루프 블로킹 방지)
+    def _load_image(data):
+        img = Image.open(io.BytesIO(data))
+        img.verify()
+        img = Image.open(io.BytesIO(data))
+        img = ImageOps.exif_transpose(img)
+        return img.convert("RGB")
     try:
-        image = Image.open(io.BytesIO(image_data))
-        image.verify()  # 이미지 파일인지 검증
-        # verify() 후에는 다시 열어야 함
-        image = Image.open(io.BytesIO(image_data))
-        image = ImageOps.exif_transpose(image)  # EXIF 회전 적용
-        image = image.convert("RGB")
+        image = await asyncio.to_thread(_load_image, image_data)
     except Exception as e:
         raise HTTPException(
             status_code=400,

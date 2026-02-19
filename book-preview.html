@@ -681,6 +681,30 @@
     font-weight: 500;
     white-space: nowrap;
   }
+  .toggle-toast {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-bottom: 8px;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 500;
+    padding: 6px 14px;
+    border-radius: 999px;
+    white-space: nowrap;
+    pointer-events: none;
+    animation: toggleToastFade 1.8s ease forwards;
+  }
+  @keyframes toggleToastFade {
+    0% { opacity: 0; transform: translateX(-50%) translateY(4px); }
+    15% { opacity: 1; transform: translateX(-50%) translateY(0); }
+    70% { opacity: 1; }
+    100% { opacity: 0; }
+  }
   .model-toggle {
     display: flex;
     background: #f0f0f0;
@@ -704,7 +728,6 @@
   .model-toggle-loading {
     opacity: 0.35;
     position: relative;
-    pointer-events: none;
   }
   .model-toggle-loading.active {
     animation: toggle-pulse 1s ease-in-out infinite;

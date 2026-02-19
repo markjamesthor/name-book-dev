@@ -389,17 +389,18 @@ function updateCandidateList() {
     if (i >= coverCandidates.length) return;
     const c = coverCandidates[i];
     el.classList.toggle('active', i === activeCandidateIndex);
-    el.classList.toggle('processing', c.isProcessing);
+    const showSpinner = c.isProcessing || !c.photoOptions;
+    el.classList.toggle('processing', showSpinner);
     // Sync img src if changed (e.g., placeholder → real thumb from server)
     const img = el.querySelector('img');
     if (img && img.src !== c.thumbURL) img.src = c.thumbURL;
     // Spinner
     const spinner = el.querySelector('.candidate-spinner');
-    if (c.isProcessing && !spinner) {
+    if (showSpinner && !spinner) {
       const s = document.createElement('div');
       s.className = 'candidate-spinner';
       el.appendChild(s);
-    } else if (!c.isProcessing && spinner) {
+    } else if (!showSpinner && spinner) {
       spinner.remove();
     }
   });
@@ -564,6 +565,8 @@ function positionCoverChild() {
 }
 
 function renderCarousel() {
+  // Skip re-render while user is dragging/rotating child photo
+  if (isEditingCoverPos) return;
   const pages = getPages();
   if (currentPageIndex >= pages.length) currentPageIndex = pages.length - 1;
   if (currentPageIndex < 0) currentPageIndex = 0;
@@ -818,21 +821,17 @@ function setupCarouselTouch(track) {
 
     // Prepare cover child drag (don't commit yet — wait for move to confirm)
     if (!isPinching && !childDragPending && e.touches.length === 1) {
-      const childWrap = e.target.closest('.cover-child-wrap');
-      if (childWrap) {
-        const img = childWrap.querySelector('.cover-child-img');
-        if (img) {
-          if (!coverManualOffset) coverManualOffset = { dx: 0, dy: 0, rotation: 0 };
-          childDragImg = img;
-          childDragWrap = img.closest('.slide-img-wrap');
-          childDragStartX = e.touches[0].clientX;
-          childDragStartY = e.touches[0].clientY;
-          childDragStartDx = coverManualOffset.dx;
-          childDragStartDy = coverManualOffset.dy;
-          childDragPending = true;
-          // Don't set isEditingCoverPos yet — allow pinch to take over
-          return;
-        }
+      const img = e.target.closest('.cover-child-img');
+      if (img) {
+        if (!coverManualOffset) coverManualOffset = { dx: 0, dy: 0, rotation: 0 };
+        childDragImg = img;
+        childDragWrap = img.closest('.slide-img-wrap');
+        childDragStartX = e.touches[0].clientX;
+        childDragStartY = e.touches[0].clientY;
+        childDragStartDx = coverManualOffset.dx;
+        childDragStartDy = coverManualOffset.dy;
+        childDragPending = true;
+        return;
       }
     }
 
@@ -899,12 +898,24 @@ function setupCarouselTouch(track) {
         childDragPending = false;
         isEditingCoverPos = true;
         childDragImg.style.transition = 'none';
+        // Reset start position to current touch to prevent jump
+        childDragStartX = e.touches[0].clientX;
+        childDragStartY = e.touches[0].clientY;
+        childDragStartDx = coverManualOffset.dx;
+        childDragStartDy = coverManualOffset.dy;
         // Fall through to drag below
       }
     }
 
     // Cover child drag move
     if (childDragImg && isEditingCoverPos && !isPinching) {
+      // Verify DOM elements are still attached
+      if (!childDragImg.isConnected || !childDragWrap || !childDragWrap.isConnected) {
+        childDragImg = null;
+        childDragWrap = null;
+        isEditingCoverPos = false;
+        return;
+      }
       e.preventDefault();
       const pt = e.touches[0];
       const wrapRect = childDragWrap.getBoundingClientRect();
@@ -1418,7 +1429,9 @@ async function processCandidate(candidate) {
 
     if (!candidate.failedModels) candidate.failedModels = new Set();
     const activeModels = BG_REMOVE_MODELS.filter(m => m.key !== 'removebg' || useRemoveBg);
-    const promises = activeModels.map(m => {
+    // Send removebg first — it uses external API, doesn't wait for server GPU
+    const sorted = [...activeModels].sort((a, b) => (a.key === 'removebg' ? -1 : b.key === 'removebg' ? 1 : 0));
+    const promises = sorted.map(m => {
       const fd = new FormData();
       fd.append('file', fileToSend);
       return fetch(`${SMART_CROP_API}/remove-bg?model=${m.key}`, { method: 'POST', body: fd })
@@ -1505,11 +1518,28 @@ async function handleCoverPhotos(files) {
   if (!isProcessingQueue) runProcessingQueue();
 }
 
+function showToggleToast(msg) {
+  const overlay = document.querySelector('.cover-model-overlay');
+  if (!overlay) return;
+  const prev = overlay.querySelector('.toggle-toast');
+  if (prev) prev.remove();
+  const toast = document.createElement('div');
+  toast.className = 'toggle-toast';
+  toast.textContent = msg;
+  overlay.appendChild(toast);
+  toast.addEventListener('animationend', () => toast.remove());
+}
+
 function selectCoverModel(modelKey) {
   if (!coverPhotoOptions) return;
   const chosen = coverPhotoOptions[modelKey];
-  // Not loaded yet — ignore click
-  if (!chosen) return;
+  if (!chosen) {
+    // Check if failed or still loading
+    const c = coverCandidates[activeCandidateIndex];
+    if (c && c.failedModels && c.failedModels.has(modelKey)) return;
+    showToggleToast('배경을 지우는 중입니다');
+    return;
+  }
 
   selectedModelKey = modelKey;
   coverPhotoURL = chosen.url;
