@@ -1,6 +1,7 @@
 /**
  * 노미네 왕국 — Book Preview Engine
  * Config-Driven 동화책 미리보기 (Carousel)
+ * Casetify-style 3-step mobile-first UI
  */
 
 // ========== Korean Language Helpers ==========
@@ -53,22 +54,37 @@ function substituteVars(text, vars) {
 let config = null;
 let currentVersion = 'A';
 let currentPageIndex = 0;
+let currentStep = 0; // 0=사진, 1=페이지, 2=스토리설정(바텀시트)
 let variables = {};
 let isAnimating = false;
-let coverPhotoURL = null;   // 배경 제거된 사진 blob URL
-let isRemovingBg = false;   // 로딩 상태
-let coverLoadingText = '';  // 단계별 로딩 텍스트
-let coverCropData = null;   // { keypoints, refY, refHeight } — 키포인트 기반 배치용
-let coverPhotoOptions = null; // { portrait: {...}, ben2: {...}, 'hr-matting': {...} }
-let selectedModelKey = null;  // 현재 선택된 모델 키
-let coverManualOffset = null; // { dx: %, dy: % } — 수동 위치 조정값
-let isEditingCoverPos = false; // 위치 편집 모드
+let coverPhotoURL = null;
+let isRemovingBg = false;
+let coverLoadingText = '';
+let coverCropData = null;
+let coverPhotoOptions = null;
+let selectedModelKey = null;
+let coverManualOffset = null;
+let isEditingCoverPos = false;
+let coverCroppedFile = null;
+
+// Multi-candidate cover photo system
+let coverCandidates = [];
+let activeCandidateIndex = -1;
+let nextCandidateId = 0;
+let pendingNudge = false; // trigger nudge after first bg-remove result
+
+// Processing queue — one candidate at a time to avoid overwhelming the server
+let processingQueue = [];
+let isProcessingQueue = false;
 
 const BG_REMOVE_MODELS = [
   { key: 'portrait', label: '1' },
   { key: 'ben2', label: '2' },
   { key: 'hr-matting', label: '3' },
+  { key: 'removebg', label: '4' },
 ];
+
+let useRemoveBg = localStorage.getItem('bookPreview_useRemoveBg') === 'true';
 
 // ========== DOM ==========
 const els = {};
@@ -76,23 +92,51 @@ const els = {};
 function cacheDom() {
   els.firstNameInput = document.getElementById('input-firstName');
   els.parentNamesInput = document.getElementById('input-parentNames');
-  els.mFirstNameInput = document.getElementById('m-input-firstName');
-  els.mParentNamesInput = document.getElementById('m-input-parentNames');
   els.versionBtns = document.querySelectorAll('.version-btn');
   els.pageViewer = document.getElementById('page-viewer');
-  els.pageTitle = document.getElementById('page-title');
   els.pageCounter = document.getElementById('page-counter');
-  els.pageCounterBottom = document.getElementById('page-counter-bottom');
-  els.mPageTitle = document.getElementById('m-page-title');
-  els.mPageCounter = document.getElementById('m-page-counter');
-  els.prevBtn = document.getElementById('btn-prev');
-  els.nextBtn = document.getElementById('btn-next');
-  els.mPrevBtn = document.getElementById('m-btn-prev');
-  els.mNextBtn = document.getElementById('m-btn-next');
   els.thumbnailStrip = document.getElementById('thumbnail-strip');
-  els.settingsBtn = document.getElementById('btn-settings');
-  els.settingsOverlay = document.getElementById('settings-overlay');
-  els.settingsBackdrop = document.getElementById('settings-backdrop');
+  els.stepTabs = document.querySelectorAll('.step-tab');
+  els.stepContents = document.querySelectorAll('.step-content');
+  els.coverControls = document.getElementById('cover-controls');
+}
+
+// ========== Step System ==========
+
+function setStep(step) {
+  // Step 2 = story sheet overlay
+  if (step === 2) {
+    openStorySheet();
+    return;
+  }
+  currentStep = step;
+  els.stepTabs.forEach(tab => {
+    tab.classList.toggle('active', parseInt(tab.dataset.step) === step);
+  });
+  els.stepContents.forEach(content => {
+    content.classList.toggle('active', content.id === `step-content-${step}`);
+  });
+  if (step === 0) renderCoverControls();
+}
+
+function openStorySheet() {
+  document.getElementById('story-sheet-backdrop').classList.add('open');
+  document.getElementById('story-sheet').classList.add('open');
+}
+
+function closeStorySheet() {
+  document.getElementById('story-sheet-backdrop').classList.remove('open');
+  document.getElementById('story-sheet').classList.remove('open');
+}
+
+function onPageChanged() {
+  const pages = getPages();
+  const page = pages[currentPageIndex];
+  if (page && page.isCover) {
+    setStep(0);
+  } else if (currentStep === 0) {
+    setStep(1);
+  }
 }
 
 // ========== Config Loading ==========
@@ -116,12 +160,11 @@ async function loadConfig() {
   const pn = config.defaults.parentNames;
   els.firstNameInput.value = fn;
   els.parentNamesInput.value = pn;
-  els.mFirstNameInput.value = fn;
-  els.mParentNamesInput.value = pn;
 
   updateVariables();
   renderCarousel();
   renderThumbnails();
+  renderCoverControls();
 }
 
 // ========== Variable Update ==========
@@ -137,16 +180,6 @@ function updateVariables() {
   };
 }
 
-function syncInputs(source) {
-  if (source === 'desktop') {
-    els.mFirstNameInput.value = els.firstNameInput.value;
-    els.mParentNamesInput.value = els.parentNamesInput.value;
-  } else {
-    els.firstNameInput.value = els.mFirstNameInput.value;
-    els.parentNamesInput.value = els.mParentNamesInput.value;
-  }
-}
-
 // ========== Carousel ==========
 
 function getPages() {
@@ -159,7 +192,6 @@ function getPages() {
   return [coverPage, ...config.versions[currentVersion].pages];
 }
 
-// 서버가 alpha bbox로 크롭한 이미지를 원본(스마트크롭) 크기로 패딩 → 모든 모델 동일 크기
 function padImageToRef(blob, cropX, cropY, refW, refH) {
   return new Promise((resolve) => {
     const img = new Image();
@@ -209,7 +241,6 @@ function computeChildPositionWith(srvCropY, srvCropH) {
   const eyeY = eyeL !== null && eyeR !== null ? (eyeL + eyeR) / 2 : (eyeL || eyeR);
   const ey = Math.max(0.05, Math.min(0.95, eyeY));
 
-  // 눈 X 중간점 (이미지 내 비율, 0=왼쪽, 1=오른쪽)
   const eyeLx = findKpX('left_eye');
   const eyeRx = findKpX('right_eye');
   const eyeX = eyeLx !== null && eyeRx !== null ? (eyeLx + eyeRx) / 2
@@ -230,49 +261,29 @@ function computeChildPositionWith(srvCropY, srvCropH) {
   const h = 50 / (hipY - ey);
   const t = 50 - ey * h;
 
-  // 눈 X 중간점이 화면 중앙에 오도록 left 오프셋 계산
-  // left = 50% - (eyeX * width%) → translateX(-50%) 대신 눈 기준으로 정렬
-  const leftOffset = 50 - eyeX * 100; // eyeX=0.5이면 offset=0 (기본 중앙)
+  const leftOffset = 50 - eyeX * 100;
 
   console.log(`아이 배치: eye=${ey.toFixed(3)} hip=${hipY.toFixed(3)} eyeX=${eyeX.toFixed(3)} → height=${h.toFixed(1)}% top=${t.toFixed(1)}% leftOff=${leftOffset.toFixed(1)}%`);
   return { height: h, top: t, leftOffset };
 }
 
 function computeChildPosition() {
-  // 이미지가 padImageToRef로 원본 크기에 패딩되므로 cropY=0, cropH=refHeight
   return computeChildPositionWith(0, coverCropData?.refHeight);
 }
 
+// Build cover visual only (no controls — those go to renderCoverControls)
 function buildCoverContent() {
   const bgPath = config.illustrations['golden_star'];
   const coverTitle = `내 이름은 왜 ${variables.firstName}이야?`;
   const titleStyle = getCoverTitleStyle();
   const titleHtml = `<div class="cover-top-title"${titleStyle ? ` style="${titleStyle}"` : ''}><div class="cover-top-title-text">${coverTitle}</div></div>`;
 
-  // 배경: 다른 페이지와 동일한 구조 (page-bg-blur + page-bg-img)
   const frontStyle = getCoverLayoutStyle();
   let imgContent = `<div class="page-bg-blur" style="background-image:url('${bgPath}')"></div>
-    <img class="page-bg-img" src="${bgPath}" alt="커버" />
+    <img class="page-bg-img" src="${bgPath}" alt="커버" style="object-fit:contain;object-position:center;" />
     <div class="cover-front-wrap"${frontStyle ? ` style="${frontStyle}"` : ''}><img class="cover-front-img" src="NAME/cover_front.png" /></div>`;
 
-  // 토글: coverPhotoOptions가 존재하면 항상 표시 (로딩 중인 항목은 로딩 표시)
-  let toggleHtml = '';
-  if (coverPhotoOptions) {
-    const opts = BG_REMOVE_MODELS.map(m => {
-      const loaded = !!coverPhotoOptions[m.key];
-      const active = selectedModelKey === m.key;
-      let cls = 'model-toggle-option';
-      if (active) cls += ' active';
-      if (!loaded) cls += ' model-toggle-loading';
-      return `<div class="${cls}" data-model="${m.key}">${m.label}</div>`;
-    }).join('');
-    toggleHtml = `<div class="model-toggle-wrap">
-      <div class="model-toggle-hint">확대해서 배경이 가장 잘 지워진 사진을 골라주세요.</div>
-      <div class="model-toggle">${opts}</div>
-    </div>`;
-  }
-
-  // 선택된 모델의 결과가 있으면 아이 사진 표시
+  // Child photo displayed
   const selectedOpt = selectedModelKey && coverPhotoOptions && coverPhotoOptions[selectedModelKey];
   if (selectedOpt && coverPhotoURL) {
     const pos = computeChildPosition();
@@ -280,39 +291,155 @@ function buildCoverContent() {
     if (pos) {
       const mdx = coverManualOffset ? coverManualOffset.dx : 0;
       const mdy = coverManualOffset ? coverManualOffset.dy : 0;
+      const rot = coverManualOffset ? (coverManualOffset.rotation || 0) : 0;
       const tx = (pos.leftOffset - 50) + mdx;
-      childStyle = `height:${pos.height.toFixed(1)}%;top:${(pos.top + mdy).toFixed(1)}%;left:50%;transform:translateX(${tx.toFixed(1)}%)`;
+      childStyle = `height:${pos.height.toFixed(1)}%;top:${(pos.top + mdy).toFixed(1)}%;left:50%;transform:translateX(${tx.toFixed(1)}%) rotate(${rot}deg)`;
     } else {
-      childStyle = 'height:80%;bottom:0;left:50%;transform:translateX(-50%)';
+      const rot = coverManualOffset ? (coverManualOffset.rotation || 0) : 0;
+      childStyle = `height:80%;bottom:0;left:50%;transform:translateX(-50%) rotate(${rot}deg)`;
     }
     const wrapStyle = getCoverLayoutStyle();
-    imgContent += `<div class="cover-child-wrap"${wrapStyle ? ` style="${wrapStyle}"` : ''}><img class="cover-child-img" src="${coverPhotoURL}" style="${childStyle}" /></div>`;
-    const actionHtml = `<div class="cover-action-menu">
-      <button class="cover-action-btn" data-action="move">위치 변경</button>
-      <button class="cover-action-btn" data-action="change">사진 변경</button>
+    const nudgeClass = pendingNudge ? ' nudge' : '';
+    const showDragHint = pendingNudge && !localStorage.getItem('bookPreview_dragHintSeen');
+    imgContent += `<div class="cover-child-wrap${nudgeClass}"${wrapStyle ? ` style="${wrapStyle}"` : ''}><img class="cover-child-img" src="${coverPhotoURL}" style="${childStyle}" /></div>`;
+    if (showDragHint) {
+      imgContent += `<div class="cover-drag-hint">터치해서 위치를 조정하세요</div>`;
+      localStorage.setItem('bookPreview_dragHintSeen', '1');
+    }
+    if (pendingNudge) pendingNudge = false;
+
+    // Model toggle inside the card
+    const activeModels = BG_REMOVE_MODELS.filter(m => m.key !== 'removebg' || useRemoveBg);
+    let activeIdx = 0;
+    const toggleOpts = activeModels.map((m, idx) => {
+      const loaded = !!coverPhotoOptions[m.key];
+      const active = selectedModelKey === m.key;
+      let cls = 'model-toggle-option';
+      if (active) { cls += ' active'; activeIdx = idx; }
+      if (!loaded) cls += ' model-toggle-loading';
+      return `<div class="${cls}" data-model="${m.key}" data-idx="${idx}">${m.label}</div>`;
+    }).join('');
+    const indicatorHtml = `<div class="model-toggle-indicator" style="transform:translateX(${activeIdx * 46}px)"></div>`;
+    const toggleHtml = `<div class="cover-model-overlay">
+      <div class="model-toggle model-toggle-large">${indicatorHtml}${toggleOpts}</div>
+      <div class="model-toggle-hint">숫자를 눌러 배경이 가장 잘 지워진 사진을 골라주세요</div>
     </div>`;
 
-    return `
-      <div class="slide-img-wrap">${imgContent}${titleHtml}</div>${toggleHtml}${actionHtml}`;
+    return `<div class="slide-img-wrap">${imgContent}${titleHtml}</div>${toggleHtml}`;
   }
 
-  // 선택된 모델이 로딩 중이거나 배경 제거 진행 중 → 스피너
-  if (coverPhotoOptions || isRemovingBg) {
+  // Loading state — spinner in carousel
+  if (isRemovingBg) {
     return `
       <div class="slide-img-wrap">${imgContent}${titleHtml}</div>
       <div class="cover-layout"><div class="cover-loading">
         <div class="cover-spinner"></div>
         <div class="cover-loading-text">${coverLoadingText || '처리 중...'}</div>
-      </div></div>${toggleHtml}`;
+      </div></div>`;
   }
 
-  // 업로드 전
+  // No photo — hint to use 사진 tab
   return `
     <div class="slide-img-wrap">${imgContent}${titleHtml}</div>
-    <div class="cover-layout"><div class="cover-photo-zone" id="cover-upload-zone">
-      <div class="upload-icon">📷</div>
-      <div class="upload-text">사진을 선택하세요</div>
-    </div></div>`;
+`;
+}
+
+// Update candidate list DOM — preserves <img> elements to avoid reload flicker
+function updateCandidateList() {
+  const container = els.coverControls;
+  if (!container) return;
+
+  let listEl = container.querySelector('.candidate-list');
+
+  if (coverCandidates.length === 0) {
+    if (listEl) listEl.remove();
+    return;
+  }
+
+  // Create list if missing
+  if (!listEl) {
+    listEl = document.createElement('div');
+    listEl.className = 'candidate-list';
+    listEl.innerHTML = '<button class="candidate-add" id="cover-add-btn">+</button>';
+    container.prepend(listEl);
+  }
+
+  const existingThumbs = listEl.querySelectorAll('.candidate-thumb');
+  const addBtn = listEl.querySelector('.candidate-add');
+
+  // Add new thumbs (only for candidates that don't have a DOM element yet)
+  for (let i = existingThumbs.length; i < coverCandidates.length; i++) {
+    const c = coverCandidates[i];
+    const div = document.createElement('div');
+    div.className = 'candidate-thumb';
+    div.dataset.candidateIndex = String(i);
+    const img = document.createElement('img');
+    img.src = c.thumbURL;
+    img.alt = '';
+    div.appendChild(img);
+    listEl.insertBefore(div, addBtn);
+  }
+
+  // Update classes + img src on all thumbs
+  listEl.querySelectorAll('.candidate-thumb').forEach((el, i) => {
+    if (i >= coverCandidates.length) return;
+    const c = coverCandidates[i];
+    el.classList.toggle('active', i === activeCandidateIndex);
+    el.classList.toggle('processing', c.isProcessing);
+    // Sync img src if changed (e.g., placeholder → real thumb from server)
+    const img = el.querySelector('img');
+    if (img && img.src !== c.thumbURL) img.src = c.thumbURL;
+    // Spinner
+    const spinner = el.querySelector('.candidate-spinner');
+    if (c.isProcessing && !spinner) {
+      const s = document.createElement('div');
+      s.className = 'candidate-spinner';
+      el.appendChild(s);
+    } else if (!c.isProcessing && spinner) {
+      spinner.remove();
+    }
+  });
+}
+
+// Render cover controls in bottom panel (step-2)
+function renderCoverControls() {
+  if (!els.coverControls) return;
+
+  // Preserve candidate list (img elements stay in DOM)
+  updateCandidateList();
+
+  // Get or create status container
+  let statusEl = els.coverControls.querySelector('.cover-status');
+  if (!statusEl) {
+    statusEl = document.createElement('div');
+    statusEl.className = 'cover-status';
+    els.coverControls.appendChild(statusEl);
+  }
+
+  const selectedOpt = selectedModelKey && coverPhotoOptions && coverPhotoOptions[selectedModelKey];
+
+  // Photo exists with result — toggle is now inside the card
+  if (selectedOpt && coverPhotoURL) {
+    statusEl.innerHTML = '';
+    return;
+  }
+
+  // Loading state — thumbnail spinner handles it now
+  if (coverPhotoOptions || isRemovingBg) {
+    statusEl.innerHTML = '';
+    return;
+  }
+
+  // No photo — upload button
+  if (coverCandidates.length === 0) {
+    statusEl.innerHTML = `
+      <button class="cover-upload-btn" id="cover-upload-btn">
+        사진 선택하기
+      </button>
+      <div style="font-size:12px;color:#1a1a1a;text-align:center;margin-top:4px;">동화책에 들어갈 아이 사진을 <b>여러장</b> 업로드 하세요</div>`;
+  } else {
+    statusEl.innerHTML = '';
+  }
 }
 
 function buildSlideContent(pageIndex) {
@@ -321,14 +448,14 @@ function buildSlideContent(pageIndex) {
 
   const page = pages[pageIndex];
 
-  // Cover page — special rendering
   if (page.isCover) return buildCoverContent();
 
   let imgContent = '';
+  let imgPath = '';
   if (page.illustration && config.illustrations[page.illustration]) {
-    const imgPath = config.illustrations[page.illustration];
+    imgPath = config.illustrations[page.illustration];
     imgContent = `<div class="page-bg-blur" style="background-image:url('${imgPath}')"></div>
-      <img class="page-bg-img" src="${imgPath}" alt="${page.title}" />`;
+      <img class="page-bg-img" src="${imgPath}" alt="${page.title}" style="object-fit:cover;object-position:top center;" />`;
   } else if (page.bgGradient) {
     imgContent = `<div class="page-bg-gradient" style="background:${page.bgGradient}"></div>`;
   }
@@ -336,19 +463,21 @@ function buildSlideContent(pageIndex) {
   const text = substituteVars(page.text, variables);
   const textColor = page.textColor || 'white';
   const posClass = `text-pos-${page.textPosition || 'center'}`;
+  const bgVar = imgPath ? `--page-bg-url:url('${imgPath}');` : '';
 
   return `
     <div class="slide-img-wrap">${imgContent}</div>
-    <div class="page-text-overlay ${posClass}" style="color:${textColor}">
-      <div class="page-story-text">${text.replace(/\n/g, '<br>')}</div>
+    <div class="page-text-overlay ${posClass}" style="${bgVar}color:${textColor}">
+      <div class="page-text-scroll">
+        <div class="page-story-text">${text.replace(/\n/g, '<br>')}</div>
+      </div>
     </div>`;
 }
 
-let coverBgNatSize = null; // 배경 이미지 원본 크기 캐시
-let cachedCoverLayout = null; // { imgX, imgY, imgW, imgH } — 마지막 계산된 커버 레이아웃
+let coverBgNatSize = null;
+let cachedCoverLayout = null;
 
 function getCoverLayoutStyle() {
-  // 캐시된 레이아웃으로 인라인 스타일 문자열 반환
   if (!cachedCoverLayout) return '';
   const { imgX, imgY, imgW, imgH } = cachedCoverLayout;
   return `left:${imgX}px;top:${imgY}px;width:${imgW}px;height:${imgH}px`;
@@ -361,7 +490,6 @@ function getCoverTitleStyle() {
 }
 
 function positionCoverChild() {
-  // 커버 슬라이드를 트랙 내 위치에 관계없이 찾음
   const track = document.getElementById('carousel-track');
   if (!track) return;
   let wrap = null;
@@ -405,10 +533,8 @@ function positionCoverChild() {
     imgY = 0;
   }
 
-  // 레이아웃 캐시 업데이트
   cachedCoverLayout = { imgX, imgY, imgW, imgH };
 
-  // 아이 사진 위치
   const childWrap = wrap.querySelector('.cover-child-wrap');
   if (childWrap) {
     childWrap.style.left = `${imgX}px`;
@@ -417,7 +543,6 @@ function positionCoverChild() {
     childWrap.style.height = `${imgH}px`;
   }
 
-  // 전경 레이어 위치 (cover_front.png)
   const frontWrap = wrap.querySelector('.cover-front-wrap');
   if (frontWrap) {
     frontWrap.style.left = `${imgX}px`;
@@ -426,7 +551,6 @@ function positionCoverChild() {
     frontWrap.style.height = `${imgH}px`;
   }
 
-  // 타이틀 위치
   const titleEl = wrap.querySelector('.cover-top-title');
   if (titleEl) {
     titleEl.style.top = `${imgY}px`;
@@ -445,41 +569,47 @@ function renderCarousel() {
 
   const track = document.getElementById('carousel-track');
   const vw = viewer.clientWidth;
-  // Create 3 slides: [prev, current, next]
+  const slideGap = 8;
   for (let i = -1; i <= 1; i++) {
     const slide = document.createElement('div');
     slide.className = 'carousel-slide';
-    slide.style.width = `${vw}px`;
+    slide.style.width = `${vw - slideGap}px`;
+    slide.style.marginLeft = `${slideGap / 2}px`;
+    slide.style.marginRight = `${slideGap / 2}px`;
     const pageIdx = currentPageIndex + i;
     slide.dataset.pageIndex = String(pageIdx);
+    const pages = getPages();
+    if (pageIdx >= 0 && pageIdx < pages.length && pages[pageIdx].isCover) {
+      slide.classList.add('slide-cover');
+    }
     slide.innerHTML = buildSlideContent(pageIdx);
     track.appendChild(slide);
   }
 
-  // Position to show center slide (정수 픽셀 — 서브픽셀 반올림 방지)
   track.style.transition = 'none';
   track.style.transform = `translateX(-${vw}px)`;
 
   updatePageInfo();
   setupCarouselTouch(track);
   positionCoverChild();
+  renderCoverControls();
 }
 
 function populateSlides() {
-  // 전체 재생성 (jumpToPage, renderCarousel 용)
   const track = document.getElementById('carousel-track');
   if (!track) return;
+  const pages = getPages();
   const slides = track.children;
   for (let i = 0; i < 3; i++) {
     const pageIdx = currentPageIndex + (i - 1);
     slides[i].dataset.pageIndex = String(pageIdx);
+    slides[i].classList.toggle('slide-cover', pageIdx >= 0 && pageIdx < pages.length && pages[pageIdx].isCover);
     slides[i].innerHTML = buildSlideContent(pageIdx);
   }
   positionCoverChild();
 }
 
-// 지연된 트랙 정규화: 애니메이션 끝나도 DOM 변경 안 함, 다음 상호작용 시 수행
-let pendingNormalize = null; // { direction }
+let pendingNormalize = null;
 
 function normalizeTrackIfNeeded() {
   if (!pendingNormalize) return;
@@ -490,17 +620,20 @@ function normalizeTrackIfNeeded() {
   if (!track) return;
   const vw = els.pageViewer.clientWidth;
 
+  const pages = getPages();
   if (direction > 0) {
     const first = track.firstElementChild;
     track.appendChild(first);
     const newPageIdx = currentPageIndex + 1;
     first.dataset.pageIndex = String(newPageIdx);
+    first.classList.toggle('slide-cover', newPageIdx >= 0 && newPageIdx < pages.length && pages[newPageIdx].isCover);
     first.innerHTML = buildSlideContent(newPageIdx);
   } else {
     const last = track.lastElementChild;
     track.insertBefore(last, track.firstElementChild);
     const newPageIdx = currentPageIndex - 1;
     last.dataset.pageIndex = String(newPageIdx);
+    last.classList.toggle('slide-cover', newPageIdx >= 0 && newPageIdx < pages.length && pages[newPageIdx].isCover);
     last.innerHTML = buildSlideContent(newPageIdx);
   }
 
@@ -512,25 +645,9 @@ function normalizeTrackIfNeeded() {
 
 function updatePageInfo() {
   const pages = getPages();
-  const page = pages[currentPageIndex];
-  const canPrev = currentPageIndex > 0;
-  const canNext = currentPageIndex < pages.length - 1;
-
-  const label = page.isCover ? page.title : `${page.scene}. ${page.title}`;
-  const counter = `${currentPageIndex + 1} / ${pages.length}`;
-
-  els.pageTitle.textContent = label;
+  const counter = currentPageIndex === 0 ? '커버' : `${currentPageIndex} / ${pages.length - 1}`;
   els.pageCounter.textContent = counter;
-  if (els.pageCounterBottom) els.pageCounterBottom.textContent = counter;
-  if (els.mPageTitle) els.mPageTitle.textContent = label;
-  if (els.mPageCounter) els.mPageCounter.textContent = counter;
 
-  els.prevBtn.disabled = !canPrev;
-  els.nextBtn.disabled = !canNext;
-  if (els.mPrevBtn) els.mPrevBtn.disabled = !canPrev;
-  if (els.mNextBtn) els.mNextBtn.disabled = !canNext;
-
-  // Highlight active thumbnail
   document.querySelectorAll('.thumb').forEach((t, i) => {
     t.classList.toggle('active', i === currentPageIndex);
   });
@@ -568,6 +685,7 @@ function goPage(delta) {
     updatePageInfo();
     positionCoverChild();
     isAnimating = false;
+    onPageChanged();
   };
 
   track.addEventListener('transitionend', finalize, { once: true });
@@ -581,14 +699,12 @@ function jumpToPage(targetIndex) {
   const pages = getPages();
   if (targetIndex < 0 || targetIndex >= pages.length) return;
 
-  // Adjacent page → slide
   const diff = targetIndex - currentPageIndex;
   if (Math.abs(diff) === 1) {
     goPage(diff);
     return;
   }
 
-  // Non-adjacent → crossfade
   isAnimating = true;
   const track = document.getElementById('carousel-track');
   if (!track) { isAnimating = false; return; }
@@ -608,13 +724,15 @@ function jumpToPage(targetIndex) {
     track.style.opacity = '1';
 
     updatePageInfo();
-    setTimeout(() => { isAnimating = false; }, 260);
+    setTimeout(() => {
+      isAnimating = false;
+      onPageChanged();
+    }, 260);
   }, 260);
 }
 
 // ========== Carousel Touch ==========
 
-// ========== Pinch-to-Zoom ==========
 let zoomScale = 1;
 let zoomPanX = 0;
 let zoomPanY = 0;
@@ -625,7 +743,7 @@ let pinchStartPanX = 0;
 let pinchStartPanY = 0;
 let pinchMidX = 0;
 let pinchMidY = 0;
-let zoomEdgeOverflow = 0; // 가장자리 넘친 양 (페이지 스와이프용)
+let zoomEdgeOverflow = 0;
 
 function getFingerDist(t) {
   return Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
@@ -664,14 +782,58 @@ function setupCarouselTouch(track) {
   let isDragging = false;
   let deltaX = 0;
   let startTime = 0;
-  // Pan while zoomed
   let panStartX = 0;
   let panStartY = 0;
 
-  track.addEventListener('touchstart', (e) => {
-    if (isAnimating || isEditingCoverPos) return;
+  // Cover child drag state
+  let childDragImg = null;
+  let childDragWrap = null;
+  let childDragStartX = 0;
+  let childDragStartY = 0;
+  let childDragStartDx = 0;
+  let childDragStartDy = 0;
+  let childDragPending = false; // waiting to confirm single-finger drag
+  // Child rotation state (two-finger)
+  let childRotating = false;
+  let childRotStartAngle = 0;
+  let childRotStartRotation = 0;
 
-    // 2 fingers → pinch zoom
+  track.addEventListener('touchstart', (e) => {
+    if (isAnimating) return;
+
+    // If a second finger arrives while child drag is pending → switch to rotation
+    if (childDragPending && e.touches.length === 2) {
+      childDragPending = false;
+      isEditingCoverPos = true;
+      childRotating = true;
+      const t = e.touches;
+      childRotStartAngle = Math.atan2(t[1].clientY - t[0].clientY, t[1].clientX - t[0].clientX) * 180 / Math.PI;
+      childRotStartRotation = coverManualOffset ? (coverManualOffset.rotation || 0) : 0;
+      return;
+    }
+
+    // Prepare cover child drag (don't commit yet — wait for move to confirm)
+    if (!isPinching && !childDragPending && e.touches.length === 1) {
+      const childWrap = e.target.closest('.cover-child-wrap');
+      if (childWrap) {
+        const img = childWrap.querySelector('.cover-child-img');
+        if (img) {
+          if (!coverManualOffset) coverManualOffset = { dx: 0, dy: 0, rotation: 0 };
+          childDragImg = img;
+          childDragWrap = img.closest('.slide-img-wrap');
+          childDragStartX = e.touches[0].clientX;
+          childDragStartY = e.touches[0].clientY;
+          childDragStartDx = coverManualOffset.dx;
+          childDragStartDy = coverManualOffset.dy;
+          childDragPending = true;
+          // Don't set isEditingCoverPos yet — allow pinch to take over
+          return;
+        }
+      }
+    }
+
+    if (isEditingCoverPos) return;
+
     if (e.touches.length === 2) {
       isPinching = true;
       isDragging = false;
@@ -684,9 +846,7 @@ function setupCarouselTouch(track) {
       return;
     }
 
-    // 1 finger
     if (zoomScale > 1) {
-      // Zoomed → pan mode
       panStartX = e.touches[0].clientX;
       panStartY = e.touches[0].clientY;
       pinchStartPanX = zoomPanX;
@@ -705,14 +865,59 @@ function setupCarouselTouch(track) {
   }, { passive: true });
 
   track.addEventListener('touchmove', (e) => {
-    if (isAnimating || isEditingCoverPos) return;
+    if (isAnimating) return;
 
-    // Pinch zoom
+    // Child rotation (two-finger on child photo)
+    if (childRotating && childDragImg && e.touches.length === 2) {
+      e.preventDefault();
+      if (!coverManualOffset) coverManualOffset = { dx: 0, dy: 0, rotation: 0 };
+      const t = e.touches;
+      const angle = Math.atan2(t[1].clientY - t[0].clientY, t[1].clientX - t[0].clientX) * 180 / Math.PI;
+      coverManualOffset.rotation = childRotStartRotation + (angle - childRotStartAngle);
+      childDragImg.style.transition = 'none';
+      applyCoverManualOffset(childDragImg);
+      return;
+    }
+
+    // Cover child drag: pending → confirm or cancel
+    if (childDragPending && childDragImg) {
+      if (e.touches.length >= 2) {
+        // Second finger arrived → switch to rotation
+        childDragPending = false;
+        isEditingCoverPos = true;
+        childRotating = true;
+        const t = e.touches;
+        childRotStartAngle = Math.atan2(t[1].clientY - t[0].clientY, t[1].clientX - t[0].clientX) * 180 / Math.PI;
+        childRotStartRotation = coverManualOffset ? (coverManualOffset.rotation || 0) : 0;
+        return;
+      } else {
+        // Single finger move → confirm child drag
+        childDragPending = false;
+        isEditingCoverPos = true;
+        childDragImg.style.transition = 'none';
+        // Fall through to drag below
+      }
+    }
+
+    // Cover child drag move
+    if (childDragImg && isEditingCoverPos && !isPinching) {
+      e.preventDefault();
+      const pt = e.touches[0];
+      const wrapRect = childDragWrap.getBoundingClientRect();
+      const dx = ((pt.clientX - childDragStartX) / wrapRect.width) * 100;
+      const dy = ((pt.clientY - childDragStartY) / wrapRect.height) * 100;
+      coverManualOffset.dx = childDragStartDx + dx;
+      coverManualOffset.dy = childDragStartDy + dy;
+      applyCoverManualOffset(childDragImg);
+      return;
+    }
+
+    if (isEditingCoverPos) return;
+
     if (isPinching && e.touches.length === 2) {
       e.preventDefault();
       const dist = getFingerDist(e.touches);
       zoomScale = Math.min(4, Math.max(1, pinchStartScale * (dist / pinchStartDist)));
-      // Pan follows midpoint shift
       const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
       const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
       zoomPanX = pinchStartPanX + (midX - pinchMidX) / zoomScale;
@@ -721,7 +926,6 @@ function setupCarouselTouch(track) {
       return;
     }
 
-    // Pan while zoomed (1 finger)
     if (zoomScale > 1 && e.touches.length === 1) {
       e.preventDefault();
       const dx = e.touches[0].clientX - panStartX;
@@ -735,12 +939,10 @@ function setupCarouselTouch(track) {
       const rawPanX = pinchStartPanX + dx / zoomScale;
       const rawPanY = pinchStartPanY + dy / zoomScale;
 
-      // 클램핑
       zoomPanX = Math.max(-maxPanX, Math.min(maxPanX, rawPanX));
       zoomPanY = Math.max(-maxPanY, Math.min(maxPanY, rawPanY));
       applyZoom();
 
-      // 가장자리 오버플로 → 페이지 스와이프용 축적
       if (rawPanX > maxPanX) {
         zoomEdgeOverflow = (rawPanX - maxPanX) * zoomScale;
       } else if (rawPanX < -maxPanX) {
@@ -754,12 +956,11 @@ function setupCarouselTouch(track) {
     const dx = e.touches[0].clientX - startX;
     const dy = e.touches[0].clientY - startY;
 
-    // Determine direction on first significant move
     if (!isDragging) {
       if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 8) {
         isDragging = true;
       } else if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 8) {
-        return; // vertical scroll, don't interfere
+        return;
       } else {
         return;
       }
@@ -769,18 +970,43 @@ function setupCarouselTouch(track) {
     const viewerWidth = els.pageViewer.clientWidth;
     const pages = getPages();
 
-    // Rubber band at edges
     let adjustedDx = deltaX;
     if (currentPageIndex === 0 && deltaX > 0) adjustedDx = deltaX * 0.25;
     if (currentPageIndex === pages.length - 1 && deltaX < 0) adjustedDx = deltaX * 0.25;
 
-    const baseOffset = -viewerWidth; // center slide position
+    const baseOffset = -viewerWidth;
     track.style.transform = `translateX(${baseOffset + adjustedDx}px)`;
   }, { passive: false });
 
-  // 더블탭 → 줌 리셋
   let lastTapTime = 0;
   track.addEventListener('touchend', (e) => {
+    // Child rotation end — if one finger lifts, stop rotating but keep state
+    if (childRotating && e.touches.length < 2) {
+      childRotating = false;
+      if (e.touches.length === 0) {
+        if (childDragImg) childDragImg.style.transition = '';
+        childDragImg = null;
+        childDragWrap = null;
+        isEditingCoverPos = false;
+        saveGlobalsToActiveCandidate();
+        return;
+      }
+      // One finger remaining — don't start swipe
+      return;
+    }
+    // Cover child drag end (or pending cancelled by lift)
+    if (childDragPending || (childDragImg && isEditingCoverPos)) {
+      if (childDragImg) childDragImg.style.transition = '';
+      childDragPending = false;
+      childDragImg = null;
+      childDragWrap = null;
+      if (isEditingCoverPos) {
+        isEditingCoverPos = false;
+        saveGlobalsToActiveCandidate();
+      }
+      return;
+    }
+
     if (isEditingCoverPos) return;
     if (e.touches.length === 0 && !isPinching && !isDragging && zoomScale > 1) {
       const now = Date.now();
@@ -792,13 +1018,19 @@ function setupCarouselTouch(track) {
       lastTapTime = now;
     }
 
-    // 핀치 종료
     if (isPinching) {
       isPinching = false;
       if (zoomScale < 1.05) {
         resetZoom();
+        // Prevent remaining finger from triggering swipe with stale startX
+        if (e.touches.length > 0) {
+          startX = e.touches[0].clientX;
+          startY = e.touches[0].clientY;
+          startTime = Date.now();
+          isDragging = false;
+          deltaX = 0;
+        }
       } else if (e.touches.length > 0) {
-        // 2→1 손가락 전환: 남은 손가락 기준으로 pan 시작점 갱신 (점프 방지)
         panStartX = e.touches[0].clientX;
         panStartY = e.touches[0].clientY;
         pinchStartPanX = zoomPanX;
@@ -806,7 +1038,6 @@ function setupCarouselTouch(track) {
       }
       return;
     }
-    // 줌 상태에서 팬 종료 — 가장자리 넘치면 페이지 전환
     if (zoomScale > 1) {
       const viewerW = els.pageViewer.clientWidth;
       const pages = getPages();
@@ -826,14 +1057,13 @@ function setupCarouselTouch(track) {
 
     const viewerWidth = els.pageViewer.clientWidth;
     const pages = getPages();
-    const velocity = Math.abs(deltaX) / (Date.now() - startTime); // px/ms
+    const velocity = Math.abs(deltaX) / (Date.now() - startTime);
     const threshold = viewerWidth * 0.2;
     const fastSwipe = velocity > 0.4;
 
     track.style.transition = 'transform 0.3s ease-out';
 
     if ((deltaX < -threshold || (fastSwipe && deltaX < -30)) && currentPageIndex < pages.length - 1) {
-      // Swipe left → next
       isAnimating = true;
       track.style.transform = `translateX(-${viewerWidth * 2}px)`;
 
@@ -846,12 +1076,12 @@ function setupCarouselTouch(track) {
         updatePageInfo();
         positionCoverChild();
         isAnimating = false;
+        onPageChanged();
       };
       track.addEventListener('transitionend', finalize, { once: true });
       setTimeout(() => { if (!fin1) finalize(); }, 350);
 
     } else if ((deltaX > threshold || (fastSwipe && deltaX > 30)) && currentPageIndex > 0) {
-      // Swipe right → prev
       isAnimating = true;
       track.style.transform = 'translateX(0px)';
 
@@ -864,12 +1094,12 @@ function setupCarouselTouch(track) {
         updatePageInfo();
         positionCoverChild();
         isAnimating = false;
+        onPageChanged();
       };
       track.addEventListener('transitionend', finalize, { once: true });
       setTimeout(() => { if (!fin2) finalize(); }, 350);
 
     } else {
-      // Snap back
       track.style.transform = `translateX(-${viewerWidth}px)`;
     }
   }, { passive: true });
@@ -882,7 +1112,12 @@ function renderThumbnails() {
   const strip = els.thumbnailStrip;
   strip.innerHTML = '';
 
+  const needPhotoPages = new Set([0, 1, 17]);
+
   pages.forEach((page, i) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'thumb-wrap';
+
     const thumb = document.createElement('div');
     thumb.className = `thumb ${i === currentPageIndex ? 'active' : ''}`;
 
@@ -891,13 +1126,22 @@ function renderThumbnails() {
       thumb.innerHTML = `<img src="${coverBg}" alt="커버" /><div class="thumb-cover">커버</div>`;
     } else if (page.illustration && config.illustrations[page.illustration]) {
       const imgPath = config.illustrations[page.illustration];
-      thumb.innerHTML = `<img src="${imgPath}" alt="${page.title}" /><span class="thumb-label">${page.scene}</span>`;
+      thumb.innerHTML = `<img src="${imgPath}" alt="${page.title}" /><span class="thumb-label">${i}</span>`;
     } else {
-      thumb.innerHTML = `<div class="thumb-gradient" style="background:${page.bgGradient || '#333'}"></div><span class="thumb-label">${page.scene}</span>`;
+      thumb.innerHTML = `<div class="thumb-gradient" style="background:${page.bgGradient || '#333'}"></div><span class="thumb-label">${i}</span>`;
     }
 
     thumb.addEventListener('click', () => jumpToPage(i));
-    strip.appendChild(thumb);
+    wrap.appendChild(thumb);
+
+    if (needPhotoPages.has(i) && !coverPhotoURL) {
+      const label = document.createElement('div');
+      label.className = 'thumb-need-photo';
+      label.textContent = '사진 필요';
+      wrap.appendChild(label);
+    }
+
+    strip.appendChild(wrap);
   });
 }
 
@@ -937,116 +1181,302 @@ function cropImageOnCanvas(file, coords) {
   });
 }
 
-async function handleCoverPhoto(file) {
-  if (isRemovingBg) return;
-  isRemovingBg = true;
+// ========== Multi-Candidate Helpers ==========
 
-  // 이전 결과 정리
-  if (coverPhotoOptions) {
-    for (const opt of Object.values(coverPhotoOptions)) {
-      if (opt && opt.url) URL.revokeObjectURL(opt.url);
-    }
-    coverPhotoOptions = null;
-  }
-  selectedModelKey = null;
-  coverManualOffset = null;
+async function createPhotoThumb(file) {
+  // 1) createImageBitmap (HEIC on Safari, all standard formats)
+  try {
+    const bitmap = await createImageBitmap(file);
+    const size = 104;
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    const s = Math.min(bitmap.width, bitmap.height);
+    const sx = (bitmap.width - s) / 2;
+    const sy = (bitmap.height - s) / 2;
+    ctx.drawImage(bitmap, sx, sy, s, s, 0, 0, size, size);
+    bitmap.close();
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+    if (dataUrl.length > 1000) return dataUrl;
+  } catch (e) {}
 
-  coverLoadingText = '인물을 감지하는 중...';
+  // 2) Image element fallback
+  try {
+    const dataUrl = await new Promise((resolve, reject) => {
+      const blobUrl = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        const size = 104;
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        const s = Math.min(img.width, img.height);
+        const sx = (img.width - s) / 2;
+        const sy = (img.height - s) / 2;
+        ctx.drawImage(img, sx, sy, s, s, 0, 0, size, size);
+        URL.revokeObjectURL(blobUrl);
+        resolve(canvas.toDataURL('image/jpeg', 0.8));
+      };
+      img.onerror = () => { URL.revokeObjectURL(blobUrl); reject(); };
+      img.src = blobUrl;
+    });
+    if (dataUrl.length > 1000) return dataUrl;
+  } catch (e) {}
+
+  // 3) Placeholder (HEIC on Chrome etc.)
+  const canvas = document.createElement('canvas');
+  canvas.width = 104;
+  canvas.height = 104;
+  const ctx = canvas.getContext('2d');
+  const hash = Array.from(file.name).reduce((h, c) => (h * 31 + c.charCodeAt(0)) & 0xffffff, 0);
+  ctx.fillStyle = `hsl(${hash % 360}, 45%, 75%)`;
+  ctx.fillRect(0, 0, 104, 104);
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.font = '36px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('\u{1F4F7}', 52, 56);
+  return canvas.toDataURL('image/png');
+}
+
+function syncCandidateToGlobals(c) {
+  coverPhotoURL = c.photoURL;
+  coverPhotoOptions = c.photoOptions;
+  selectedModelKey = c.selectedModelKey;
+  coverManualOffset = c.manualOffset;
+  coverCropData = c.cropData;
+  coverCroppedFile = c.croppedFile;
+  isRemovingBg = c.isProcessing;
+  coverLoadingText = c.loadingText;
+}
+
+function saveGlobalsToActiveCandidate() {
+  if (activeCandidateIndex < 0 || activeCandidateIndex >= coverCandidates.length) return;
+  const c = coverCandidates[activeCandidateIndex];
+  c.photoURL = coverPhotoURL;
+  c.photoOptions = coverPhotoOptions;
+  c.selectedModelKey = selectedModelKey;
+  c.manualOffset = coverManualOffset;
+  c.cropData = coverCropData;
+  c.croppedFile = coverCroppedFile;
+  c.isProcessing = isRemovingBg;
+  c.loadingText = coverLoadingText;
+}
+
+function switchCandidate(index) {
+  if (index === activeCandidateIndex) return;
+  if (index < 0 || index >= coverCandidates.length) return;
+  saveGlobalsToActiveCandidate();
+  activeCandidateIndex = index;
+  syncCandidateToGlobals(coverCandidates[index]);
   renderCarousel();
-  renderThumbnails();
+  renderCoverControls();
+}
+
+async function processCandidate(candidate) {
+  const isActive = () => coverCandidates[activeCandidateIndex] === candidate;
+  const syncAndRender = () => {
+    if (isActive()) {
+      syncCandidateToGlobals(candidate);
+      renderCarousel();
+    }
+    renderCoverControls();
+  };
+
+  candidate.isProcessing = true;
+  candidate.loadingText = '인물을 감지하는 중...';
+  syncAndRender();
 
   try {
-    // Step 1: 스마트 크롭 — 인물 영역 감지 + 키포인트 저장
-    let fileToSend = file;
-    coverCropData = null;
+    let fileToSend = candidate.originalFile;
+    candidate.cropData = null;
     try {
-      const cropResult = await smartCropPerson(file);
+      const cropResult = await smartCropPerson(candidate.originalFile);
       if (cropResult && cropResult.keypoints) {
         if (cropResult.cropped && cropResult.crop) {
           console.log('스마트 크롭 적용:', cropResult.crop);
           try {
-            const croppedBlob = await cropImageOnCanvas(file, cropResult.crop);
-            fileToSend = new File([croppedBlob], file.name, { type: 'image/jpeg' });
-            coverCropData = { keypoints: cropResult.keypoints, refX: cropResult.crop.x, refY: cropResult.crop.y, refWidth: cropResult.crop.width, refHeight: cropResult.crop.height };
+            const croppedBlob = await cropImageOnCanvas(candidate.originalFile, cropResult.crop);
+            fileToSend = new File([croppedBlob], candidate.originalFile.name, { type: 'image/jpeg' });
+            candidate.cropData = { keypoints: cropResult.keypoints, refX: cropResult.crop.x, refY: cropResult.crop.y, refWidth: cropResult.crop.width, refHeight: cropResult.crop.height };
           } catch (canvasErr) {
-            // HEIC 등 브라우저에서 Canvas 로드 불가 → 원본 전송, 좌표계를 원본 기준으로 설정
-            console.warn('캔버스 크롭 실패 (HEIC?), 원본 사용:', canvasErr.message);
-            coverCropData = { keypoints: cropResult.keypoints, refX: 0, refY: 0, refWidth: cropResult.image_width, refHeight: cropResult.image_height };
+            console.warn('캔버스 크롭 실패:', canvasErr.message);
+            candidate.cropData = { keypoints: cropResult.keypoints, refX: 0, refY: 0, refWidth: cropResult.image_width, refHeight: cropResult.image_height };
           }
         } else {
-          console.log('스마트 크롭 불필요 (키포인트만 저장)');
-          coverCropData = { keypoints: cropResult.keypoints, refX: 0, refY: 0, refWidth: cropResult.image_width, refHeight: cropResult.image_height };
+          candidate.cropData = { keypoints: cropResult.keypoints, refX: 0, refY: 0, refWidth: cropResult.image_width, refHeight: cropResult.image_height };
         }
       }
     } catch (e) {
-      console.warn('스마트 크롭 스킵 (서버 미연결):', e.message);
+      console.warn('스마트 크롭 스킵:', e.message);
     }
 
-    // Step 2: 로컬 서버 배경 제거 (portrait + ben2 병렬 요청)
-    coverLoadingText = '배경을 지우는 중...';
-    renderCarousel();
+    candidate.croppedFile = fileToSend;
+    candidate.loadingText = '배경을 지우는 중...';
+    candidate.photoOptions = {};
+    candidate.photoURL = null;
+    candidate.selectedModelKey = null;
+    syncAndRender();
 
-    // 토글 즉시 표시 + 먼저 도착하는 결과를 자동 적용
-    coverPhotoOptions = {};
-    coverPhotoURL = null;
-    selectedModelKey = null;
-    renderCarousel(); // 토글(로딩 상태) + 스피너 즉시 표시
-
-    const applyResult = (modelKey, opt) => {
-      coverPhotoURL = opt.url;
-      selectedModelKey = modelKey;
-    };
-
-    const extractAndShow = async (resp, modelKey) => {
+    const extractAndApply = async (resp, modelKey) => {
       if (!resp.ok) return;
       const cropX = parseInt(resp.headers.get('X-Crop-X') || '0');
       const cropY = parseInt(resp.headers.get('X-Crop-Y') || '0');
       const blob = await resp.blob();
 
-      // 캔버스로 원본(스마트크롭) 크기에 패딩 → 모든 모델 동일 크기
+      // Update placeholder thumbnail with actual image from server result
+      // Center on eye midpoint if keypoints available
+      if (!candidate._thumbFromResult) {
+        try {
+          const bm = await createImageBitmap(blob);
+          const sz = 104, cv = document.createElement('canvas');
+          cv.width = sz; cv.height = sz;
+          const cx = cv.getContext('2d');
+
+          // Default: center crop
+          let srcSize = Math.min(bm.width, bm.height);
+          let srcX = (bm.width - srcSize) / 2;
+          let srcY = (bm.height - srcSize) / 2;
+
+          // Eye-centered cropping
+          if (candidate.cropData && candidate.cropData.keypoints) {
+            const kps = candidate.cropData.keypoints;
+            const rX = candidate.cropData.refX || 0;
+            const rY = candidate.cropData.refY || 0;
+            const eyeL = kps.find(k => k.name === 'left_eye' && k.score > 0.3);
+            const eyeR = kps.find(k => k.name === 'right_eye' && k.score > 0.3);
+
+            if (eyeL || eyeR) {
+              const eyes = [eyeL, eyeR].filter(Boolean);
+              // Map keypoints from original image → blob coordinates
+              const midX = eyes.reduce((s, k) => s + (k.x - rX - cropX), 0) / eyes.length;
+              const midY = eyes.reduce((s, k) => s + (k.y - rY - cropY), 0) / eyes.length;
+
+              // Crop size: 4x eye distance (shows face + context), or 60% of shorter side
+              if (eyeL && eyeR) {
+                const eyeDist = Math.hypot(eyeL.x - eyeR.x, eyeL.y - eyeR.y);
+                srcSize = Math.min(Math.max(eyeDist * 4, 80), bm.width, bm.height);
+              } else {
+                srcSize = Math.min(bm.width, bm.height) * 0.6;
+              }
+
+              // Center on eye midpoint, clamp to bitmap bounds
+              srcX = Math.max(0, Math.min(midX - srcSize / 2, bm.width - srcSize));
+              srcY = Math.max(0, Math.min(midY - srcSize / 2, bm.height - srcSize));
+            }
+          }
+
+          cx.fillStyle = '#f0f0f0';
+          cx.fillRect(0, 0, sz, sz);
+          cx.drawImage(bm, srcX, srcY, srcSize, srcSize, 0, 0, sz, sz);
+          bm.close();
+          const du = cv.toDataURL('image/jpeg', 0.85);
+          if (du.length > 1000) {
+            candidate.thumbURL = du;
+            candidate._thumbFromResult = true;
+          }
+        } catch (e) {}
+      }
+
       let url;
-      if (coverCropData && coverCropData.refWidth && (cropX > 0 || cropY > 0)) {
-        url = await padImageToRef(blob, cropX, cropY, coverCropData.refWidth, coverCropData.refHeight);
+      if (candidate.cropData && candidate.cropData.refWidth && (cropX > 0 || cropY > 0)) {
+        url = await padImageToRef(blob, cropX, cropY, candidate.cropData.refWidth, candidate.cropData.refHeight);
       } else {
         url = URL.createObjectURL(blob);
       }
 
-      const opt = { url };
-      coverPhotoOptions[modelKey] = opt;
-
-      // 첫 결과 또는 유저가 기다리고 있는 모델이면 적용
-      if (!selectedModelKey || selectedModelKey === modelKey) {
-        applyResult(modelKey, opt);
-        coverLoadingText = '';
-        isRemovingBg = false;
+      candidate.photoOptions[modelKey] = { url };
+      const isFirstResult = !candidate.selectedModelKey;
+      if (!candidate.selectedModelKey || candidate.selectedModelKey === modelKey) {
+        candidate.photoURL = url;
+        candidate.selectedModelKey = modelKey;
+        candidate.loadingText = '';
+        candidate.isProcessing = false;
       }
-      renderCarousel();
+      if (isFirstResult && coverCandidates[activeCandidateIndex] === candidate) {
+        pendingNudge = true;
+      }
+      syncAndRender();
     };
 
-    // 병렬 실행: 3개 모델 동시 요청
-    const promises = BG_REMOVE_MODELS.map(m => {
+    const activeModels = BG_REMOVE_MODELS.filter(m => m.key !== 'removebg' || useRemoveBg);
+    const promises = activeModels.map(m => {
       const fd = new FormData();
       fd.append('file', fileToSend);
       return fetch(`${SMART_CROP_API}/remove-bg?model=${m.key}`, { method: 'POST', body: fd })
-        .then(r => extractAndShow(r, m.key))
+        .then(r => extractAndApply(r, m.key))
         .catch(e => console.warn(`${m.key} 실패:`, e));
     });
     await Promise.allSettled(promises);
 
-    // 모두 실패한 경우
-    if (Object.keys(coverPhotoOptions).length === 0) {
-      coverPhotoOptions = null;
+    if (Object.keys(candidate.photoOptions).length === 0) {
+      candidate.photoOptions = null;
       throw new Error('모든 모델이 배경 제거에 실패했습니다.');
     }
   } catch (e) {
     console.error('배경 제거 실패:', e);
-    alert('배경 제거에 실패했습니다.\n' + e.message);
   } finally {
-    isRemovingBg = false;
-    coverLoadingText = '';
-    renderCarousel();
-    renderThumbnails();
+    candidate.isProcessing = false;
+    candidate.loadingText = '';
+    syncAndRender();
   }
+}
+
+function enqueueCandidate(candidate) {
+  processingQueue.push(candidate);
+  if (!isProcessingQueue) runProcessingQueue();
+}
+
+async function runProcessingQueue() {
+  isProcessingQueue = true;
+  while (processingQueue.length > 0) {
+    // Pick up to 3, prioritizing active candidate
+    const batch = [];
+    const activeCandidate = coverCandidates[activeCandidateIndex];
+    const activeIdx = processingQueue.findIndex(c => c === activeCandidate);
+    if (activeIdx !== -1) batch.push(processingQueue.splice(activeIdx, 1)[0]);
+    while (batch.length < 3 && processingQueue.length > 0) {
+      batch.push(processingQueue.shift());
+    }
+    await Promise.allSettled(batch.map(c => processCandidate(c)));
+  }
+  isProcessingQueue = false;
+}
+
+async function handleCoverPhotos(files) {
+  const fileArr = Array.from(files);
+  if (fileArr.length === 0) return;
+
+  if (currentPageIndex !== 0) jumpToPage(0);
+
+  const firstNewIndex = coverCandidates.length;
+  for (const file of fileArr) {
+    const thumbURL = await createPhotoThumb(file);
+    const candidate = {
+      id: nextCandidateId++,
+      thumbURL,
+      originalFile: file,
+      croppedFile: null,
+      cropData: null,
+      photoOptions: null,
+      selectedModelKey: null,
+      photoURL: null,
+      manualOffset: null,
+      isProcessing: false,
+      loadingText: ''
+    };
+    coverCandidates.push(candidate);
+    enqueueCandidate(candidate);
+  }
+
+  // Switch to first new candidate
+  saveGlobalsToActiveCandidate();
+  activeCandidateIndex = firstNewIndex;
+  syncCandidateToGlobals(coverCandidates[firstNewIndex]);
+  renderCarousel();
+  renderCoverControls();
 }
 
 function selectCoverModel(modelKey) {
@@ -1055,64 +1485,88 @@ function selectCoverModel(modelKey) {
 
   const chosen = coverPhotoOptions[modelKey];
   if (chosen) {
-    // 결과 있음 — DOM 직접 업데이트 (배경 깜박임 방지)
     coverPhotoURL = chosen.url;
     const childImg = document.querySelector('.cover-child-img');
     if (childImg) {
       childImg.src = chosen.url;
-      const pos = computeChildPosition();
-      if (pos) {
-        const mdx = coverManualOffset ? coverManualOffset.dx : 0;
-        const mdy = coverManualOffset ? coverManualOffset.dy : 0;
-        const tx = (pos.leftOffset - 50) + mdx;
-        childImg.style.cssText = `height:${pos.height.toFixed(1)}%;top:${(pos.top + mdy).toFixed(1)}%;left:50%;transform:translateX(${tx.toFixed(1)}%)`;
-      }
-      // 스피너 레이아웃 있으면 제거
+      applyCoverManualOffset(childImg);
       const layout = document.querySelector('.cover-layout');
       if (layout) layout.remove();
     } else {
-      // 아직 아이 사진 DOM 없음 (스피너 상태에서 전환) → 리렌더
       renderCarousel();
     }
-  } else {
-    // 아직 로딩 중 — 스피너 표시
-    coverPhotoURL = null;
-    renderCarousel();
   }
-  // 토글 active 상태 갱신
+  // Model not loaded yet — keep current photo, just update selectedModelKey
+  // Update toggle active state + slide indicator
   document.querySelectorAll('.model-toggle-option').forEach(el => {
     el.classList.toggle('active', el.dataset.model === modelKey);
   });
+  const activeOpt = document.querySelector('.model-toggle-large .model-toggle-option.active');
+  const indicator = document.querySelector('.model-toggle-indicator');
+  if (activeOpt && indicator) {
+    const idx = parseInt(activeOpt.dataset.idx) || 0;
+    indicator.style.transform = `translateX(${idx * 46}px)`;
+  }
+  saveGlobalsToActiveCandidate();
+  renderCoverControls();
+}
+
+function toggleRemoveBg(enabled) {
+  useRemoveBg = enabled;
+  localStorage.setItem('bookPreview_useRemoveBg', enabled);
+
+  const toggleEl = document.getElementById('removebg-toggle');
+  if (toggleEl) toggleEl.classList.toggle('active', enabled);
+
+  if (enabled && coverPhotoOptions && !coverPhotoOptions['removebg'] && coverCroppedFile) {
+    const fd = new FormData();
+    fd.append('file', coverCroppedFile);
+    fetch(`${SMART_CROP_API}/remove-bg?model=removebg`, { method: 'POST', body: fd })
+      .then(async (resp) => {
+        if (!resp.ok) return;
+        const blob = await resp.blob();
+        const url = URL.createObjectURL(blob);
+        const opt = { url };
+        coverPhotoOptions['removebg'] = opt;
+        renderCarousel();
+      })
+      .catch(e => console.warn('removebg 실패:', e));
+  }
+
+  if (!enabled && selectedModelKey === 'removebg') {
+    const fallback = coverPhotoOptions && (coverPhotoOptions['portrait'] || coverPhotoOptions['ben2'] || coverPhotoOptions['hr-matting']);
+    if (fallback) {
+      const fallbackKey = coverPhotoOptions['portrait'] ? 'portrait' : coverPhotoOptions['ben2'] ? 'ben2' : 'hr-matting';
+      selectCoverModel(fallbackKey);
+    }
+  }
+
+  renderCarousel();
 }
 
 function startCoverPositionEdit() {
   isEditingCoverPos = true;
-  if (!coverManualOffset) coverManualOffset = { dx: 0, dy: 0 };
+  if (!coverManualOffset) coverManualOffset = { dx: 0, dy: 0, rotation: 0 };
 
   const childImg = document.querySelector('.cover-child-img');
   if (!childImg) return;
 
-  // 확인/취소 버튼 추가
   const wrap = childImg.closest('.slide-img-wrap');
   if (!wrap) return;
 
-  // 토글 비활성 + 힌트/액션 내용 교체 (높이 유지)
-  const slide = wrap.closest('.carousel-slide');
-  const toggleWrap = slide ? slide.querySelector('.model-toggle-wrap') : null;
-  const menu = slide ? slide.querySelector('.cover-action-menu') : null;
-  const toggleRow = toggleWrap ? toggleWrap.querySelector('.model-toggle') : null;
-  const hintEl = toggleWrap ? toggleWrap.querySelector('.model-toggle-hint') : null;
-  const savedHintText = hintEl ? hintEl.textContent : '';
-  const savedMenuHTML = menu ? menu.innerHTML : '';
-  if (toggleRow) { toggleRow.style.opacity = '0.3'; toggleRow.style.pointerEvents = 'none'; }
-  if (hintEl) hintEl.textContent = '드래그하여 위치를 조정하세요';
-  if (menu) {
-    menu.innerHTML = `
-      <button class="cover-pos-btn cover-pos-done">완료</button>
-      <button class="cover-pos-btn cover-pos-reset">초기화</button>`;
+  // Replace cover controls with position edit UI
+  const controlsEl = els.coverControls;
+  const savedControlsHTML = controlsEl ? controlsEl.innerHTML : '';
+
+  if (controlsEl) {
+    controlsEl.innerHTML = `
+      <div class="cover-pos-hint">드래그하여 위치를 조정하세요</div>
+      <div class="cover-pos-buttons">
+        <button class="cover-pos-btn cover-pos-done">완료</button>
+        <button class="cover-pos-btn cover-pos-reset">초기화</button>
+      </div>`;
   }
 
-  // 드래그 이벤트
   let startX, startY, startDx, startDy;
   const onStart = (e) => {
     if (e.target.closest('.cover-pos-btn') || e.target.closest('.model-toggle-option')) return;
@@ -1147,10 +1601,10 @@ function startCoverPositionEdit() {
     document.removeEventListener('touchmove', onMove);
     document.removeEventListener('mouseup', onEnd);
     document.removeEventListener('touchend', onEnd);
-    if (toggleRow) { toggleRow.style.opacity = ''; toggleRow.style.pointerEvents = ''; }
-    if (hintEl) hintEl.textContent = savedHintText;
-    if (menu) menu.innerHTML = savedMenuHTML;
     isEditingCoverPos = false;
+    saveGlobalsToActiveCandidate();
+    if (controlsEl) controlsEl.innerHTML = '';
+    renderCoverControls();
   };
 
   wrap.addEventListener('mousedown', onStart);
@@ -1160,11 +1614,11 @@ function startCoverPositionEdit() {
   document.addEventListener('mouseup', onEnd);
   document.addEventListener('touchend', onEnd);
 
-  const doneBtn = slide.querySelector('.cover-pos-done');
-  const resetBtn = slide.querySelector('.cover-pos-reset');
+  const doneBtn = controlsEl.querySelector('.cover-pos-done');
+  const resetBtn = controlsEl.querySelector('.cover-pos-reset');
   if (doneBtn) doneBtn.addEventListener('click', cleanup);
   if (resetBtn) resetBtn.addEventListener('click', () => {
-    coverManualOffset = { dx: 0, dy: 0 };
+    coverManualOffset = { dx: 0, dy: 0, rotation: 0 };
     applyCoverManualOffset(childImg);
   });
 }
@@ -1176,7 +1630,8 @@ function applyCoverManualOffset(childImg) {
   if (!pos) return;
   const tx = (pos.leftOffset - 50) + coverManualOffset.dx;
   const ty = coverManualOffset.dy;
-  childImg.style.cssText = `height:${pos.height.toFixed(1)}%;top:${(pos.top + ty).toFixed(1)}%;left:50%;transform:translateX(${tx.toFixed(1)}%)`;
+  const rot = coverManualOffset.rotation || 0;
+  childImg.style.cssText = `height:${pos.height.toFixed(1)}%;top:${(pos.top + ty).toFixed(1)}%;left:50%;transform:translateX(${tx.toFixed(1)}%) rotate(${rot}deg)`;
 }
 
 function setupCoverEvents() {
@@ -1184,32 +1639,46 @@ function setupCoverEvents() {
   if (!fileInput) return;
 
   fileInput.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (file) handleCoverPhoto(file);
-    fileInput.value = ''; // reset so same file can be re-selected
+    if (e.target.files.length > 0) handleCoverPhotos(e.target.files);
+    fileInput.value = '';
   });
 
-  // Delegate click on cover upload zone / photo result / toggle
+  const removebgToggle = document.getElementById('removebg-toggle');
+  if (removebgToggle) {
+    if (useRemoveBg) removebgToggle.classList.add('active');
+    removebgToggle.addEventListener('click', () => {
+      toggleRemoveBg(!useRemoveBg);
+    });
+  }
+
+  // Delegate clicks for cover controls (in bottom panel + carousel)
   document.addEventListener('click', (e) => {
-    // 토글 스위치
+    // Candidate thumbnail click
+    const candidateThumb = e.target.closest('.candidate-thumb');
+    if (candidateThumb) {
+      const idx = parseInt(candidateThumb.dataset.candidateIndex);
+      if (!isNaN(idx)) switchCandidate(idx);
+      return;
+    }
+    // Add more photos
+    if (e.target.closest('#cover-add-btn')) {
+      fileInput.click();
+      return;
+    }
     const toggleOption = e.target.closest('.model-toggle-option');
     if (toggleOption) {
       const modelKey = toggleOption.dataset.model;
       if (modelKey) selectCoverModel(modelKey);
       return;
     }
-    if (e.target.closest('#cover-upload-zone')) {
+    if (e.target.closest('#cover-upload-btn') || e.target.closest('#cover-upload-zone')) {
       fileInput.click();
       return;
     }
-    const actionBtn = e.target.closest('.cover-action-btn');
-    if (actionBtn) {
-      const action = actionBtn.dataset.action;
-      if (action === 'change') {
-        fileInput.click();
-      } else if (action === 'move') {
-        startCoverPositionEdit();
-      }
+    // Clicking cover hint in carousel → switch to photo step
+    if (e.target.closest('.cover-hint-text')) {
+      setStep(0);
+      return;
     }
   });
 }
@@ -1217,16 +1686,13 @@ function setupCoverEvents() {
 // ========== Event Handlers ==========
 
 function setupEvents() {
-  els.firstNameInput.addEventListener('input', () => { syncInputs('desktop'); updateVariables(); renderCarousel(); });
-  els.parentNamesInput.addEventListener('input', () => { syncInputs('desktop'); updateVariables(); renderCarousel(); });
-  els.mFirstNameInput.addEventListener('input', () => { syncInputs('mobile'); updateVariables(); renderCarousel(); });
-  els.mParentNamesInput.addEventListener('input', () => { syncInputs('mobile'); updateVariables(); renderCarousel(); });
+  els.firstNameInput.addEventListener('input', () => { updateVariables(); renderCarousel(); });
+  els.parentNamesInput.addEventListener('input', () => { updateVariables(); renderCarousel(); });
 
   els.versionBtns.forEach(btn => {
     btn.addEventListener('click', () => {
       els.versionBtns.forEach(b => b.classList.remove('active'));
-      document.querySelectorAll(`.version-btn[data-version="${btn.dataset.version}"]`)
-        .forEach(b => b.classList.add('active'));
+      btn.classList.add('active');
       currentVersion = btn.dataset.version;
       const pages = getPages();
       if (currentPageIndex >= pages.length) currentPageIndex = pages.length - 1;
@@ -1235,23 +1701,23 @@ function setupEvents() {
     });
   });
 
-  els.prevBtn.addEventListener('click', () => goPage(-1));
-  els.nextBtn.addEventListener('click', () => goPage(1));
-  if (els.mPrevBtn) els.mPrevBtn.addEventListener('click', () => goPage(-1));
-  if (els.mNextBtn) els.mNextBtn.addEventListener('click', () => goPage(1));
+  // Step bar navigation
+  els.stepTabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      setStep(parseInt(tab.dataset.step));
+    });
+  });
 
+  // Story sheet close
+  document.getElementById('story-sheet-done').addEventListener('click', closeStorySheet);
+  document.getElementById('story-sheet-backdrop').addEventListener('click', closeStorySheet);
+
+  // Keyboard navigation
   document.addEventListener('keydown', (e) => {
     if (e.target.tagName === 'INPUT') return;
     if (e.key === 'ArrowLeft') goPage(-1);
     else if (e.key === 'ArrowRight') goPage(1);
   });
-
-  if (els.settingsBtn) {
-    els.settingsBtn.addEventListener('click', () => els.settingsOverlay.classList.add('open'));
-  }
-  if (els.settingsBackdrop) {
-    els.settingsBackdrop.addEventListener('click', () => els.settingsOverlay.classList.remove('open'));
-  }
 }
 
 // ========== Init ==========
@@ -1262,7 +1728,6 @@ document.addEventListener('DOMContentLoaded', () => {
   setupCoverEvents();
   loadConfig();
   window.addEventListener('resize', () => {
-    // 슬라이드 너비 + 트랙 위치 갱신
     const vw = els.pageViewer.clientWidth;
     const track = document.getElementById('carousel-track');
     if (track) {

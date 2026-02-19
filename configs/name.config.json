@@ -28,7 +28,7 @@
   "versions": {
     "A": {
       "label": "베이비 모드 (0~4세)",
-      "description": "의성어/의태어 중심, 16장",
+      "description": "의성어/의태어 중심, 17장",
       "pages": [
         {
           "scene": 0,
@@ -36,7 +36,7 @@
           "illustration": "blank",
           "textColor": "white",
           "textPosition": "center",
-          "text": "이 이야기는 {name}가 너무 어려서 기억 못할 때 일어난 일이야."
+          "text": "이 이야기는 {name}가 너무 어려서 기억 못 할 때 일어난 일이야."
         },
         {
           "scene": 1,
@@ -44,7 +44,7 @@
           "illustration": "blank",
           "textColor": "white",
           "textPosition": "center",
-          "text": "{name}가 태어나기도 전,\n\n{parentNames}는 노미네 왕국의 왕과 왕비였어.\n\n요리사는 보글보글, 가수는 랄라. 여기선 모두 이름표가 있대요."
+          "text": "{name}가 태어나기도 전, {parentNames}는 노미네 왕국의 왕과 왕비였어. 요리사는 보글보글, 가수는 랄라. 여기선 모두 이름대로 살고 있었어."
         },
         {
           "scene": 2,
@@ -52,15 +52,15 @@
           "illustration": "castle",
           "textColor": "white",
           "textPosition": "top",
-          "text": "어느 날 아기가 태어났어요. 응애응애!"
+          "text": "어느 날, 아기가 태어났어요. 응애응애!\n온 왕국이 와글와글, 다들 기뻐했어요."
         },
         {
           "scene": 3,
-          "title": "비어있는 이름",
+          "title": "비어 있는 이름",
           "illustration": "castle",
           "textColor": "white",
           "textPosition": "bottom",
-          "text": "어라? 다른 사람들은 이름표가 반짝반짝 빛나는데,\n이 아기 이름표만 텅 비었네요. 하얗고 깨끗해요."
+          "text": "어라? 아기가 태어나면 항상 마법의 구슬에 이름이 보였는데, 이번에는 그냥 투명해요. 왕과 왕비는 깜짝 놀랐어요. \"어, 어떡하지?\" 왕국이 술렁술렁, 다들 두리번두리번."
         },
         {
           "scene": 4,
@@ -68,82 +68,90 @@
           "illustration": "shadow_attack",
           "textColor": "white",
           "textPosition": "bottom",
-          "text": "그때 땅이 쿵, 쿵! 흔들려요.\n그림자 없는 괴물이 나타났어요. 으르렁!\n\"이름 없는 아기는 내가 데려간다!\"\n{parentNames}는 벌벌 떨며 말했어요.\n\"안 돼! 조금만 기다려 줘!\""
+          "text": "그때 땅이 쿵, 쿵! 흔들려요. 성벽이 와르르!\n그림자 없는 괴물이 나타났어요. 으르렁!\n\"이름 없는 아기는 내가 데려간다!\"\n왕과 왕비는 벌벌 떨며 말했어요.\n\"안 돼! 조금만 기다려 줘!\""
         },
         {
           "scene": 5,
+          "title": "왕궁의 오래된 서재",
+          "illustration": "ancient_stair",
+          "textColor": "white",
+          "textPosition": "bottom",
+          "text": "왕과 왕비는 횃불을 들고 지하로 내려갔어요. 또각또각, 돌 계단을 한 칸 한 칸. 물이 뚝, 뚝 떨어지고, 바람이 쌩~ 차가워요. 깜깜한 계단을 한참 내려가니, 드디어 오래된 서재가 나타났어요. 무려 천 년 동안 아무도 온 적이 없는 곳이죠."
+        },
+        {
+          "scene": 6,
           "title": "고대의 마법",
           "illustration": "magic_book",
           "textColor": "white",
           "textPosition": "bottom",
-          "text": "왕궁 지하 깊숙한 곳에서 오래된 마법 책을 찾았어요.\n이름을 만드는 비밀이 적혀 있었죠!\n재료를 구하러 떠나야 해요.\n\n재료를 구하려면 마법의 숲을 지나가야 해요.\n거기선 이제 요정의 힘을 쓸 수 없어요."
-        },
-        {
-          "scene": 6,
-          "title": "마법의 숲으로",
-          "illustration": "forest_run",
-          "textColor": "white",
-          "textPosition": "bottom",
-          "text": "숲으로 달려가요. 두닥두닥!\n부엉이는 부엉부엉, 가시는 따끔따끔.\n그래도 멈출 수 없어요.\n우리 아기를 위해서라면!"
+          "text": "삐걱. 커다란 마법 책을 열었어요. 먼지가 뿌웅! 에취!\n이름을 만드는 비밀이 빼곡빼곡 적혀 있었죠.\n재료 세 가지를 구하러 떠나야 해요.\n마법의 숲을 지나가야 한대요!"
         },
         {
           "scene": 7,
+          "title": "마법의 숲으로",
+          "illustration": "forest_run_queen",
+          "textColor": "white",
+          "textPosition": "bottom",
+          "text": "숲으로 달려가요. 두닥두닥!\n부엉이는 부엉부엉, 가시는 따끔따끔.\n나뭇잎이 바스락바스락, 바람이 쌩쌩.\n그래도 멈출 수 없어요. 우리 아기를 위해서라면!"
+        },
+        {
+          "scene": 8,
           "title": "첫 번째 재료: 반짝이는 별",
           "illustration": "golden_star",
           "textColor": "white",
           "textPosition": "bottom",
-          "text": "어? 깜깜한 밤하늘에 반짝반짝!\n저게 뭐지?\n영원히 빛나는 별 조각이에요.\n주머니에 쏙! 챙겨요."
+          "text": "어? 깜깜한 밤하늘에 반짝반짝!\n영원히 빛나는 별이에요.\n살금살금 다가가서… 주머니에 쏙! 챙겼어요."
         },
         {
-          "scene": 8,
+          "scene": 9,
           "title": "두 번째 재료: 코끼리의 숨결",
           "illustration": "elephant",
           "textColor": "white",
           "textPosition": "bottom",
-          "text": "이번엔 쿵, 쿵, 쿵.\n와! 커다란 코끼리 아저씨다.\n코끼리가 하얀 입김을 후~ 불어줘요.\n건강해지는 바람이에요!"
+          "text": "이번엔 쿵, 쿵, 쿵. 와! 커다란 코끼리 아저씨다.\n코끼리가 하얀 입김을 후~ 불어줘요.\n하늘하늘 반짝반짝, 생명의 바람이에요!"
         },
         {
-          "scene": 9,
+          "scene": 10,
           "title": "세 번째 재료: 거인의 눈물",
           "illustration": "blank",
           "textColor": "white",
           "textPosition": "center",
-          "text": "마지막은 커다란 거인이에요.\n눈에서 눈물이 뚝, 뚝.\n손으로 받으니 따끈따끈해요.\n와, 드디어 재료를 다 모았어요!"
+          "text": "마지막은 커다란 거인이에요.\n눈에서 눈물이 뚝, 뚝.\n눈물이 또르르 굴러, 보석처럼 반짝!\n따뜻한 마음의 눈물이에요.\n와, 드디어 재료를 다 모았어요!"
         },
         {
-          "scene": 10,
+          "scene": 11,
           "title": "이름의 탄생",
           "illustration": "cauldron",
           "textColor": "white",
           "textPosition": "top",
-          "text": "별의 온기로 솥이 보글보글.\n재료를 몽땅 넣고,\n엄마 사랑, 아빠 소원도 넣고 휘휘.\n번쩍! 빛이 나며 글자가 춤을 춰요.\n{nameLetters}.\n\"와! {name}다!\""
+          "text": "별의 온기로 솥이 보글보글.\n재료를 몽땅 넣고, 엄마 사랑, 아빠 소원도 넣고 휘휘~\n부글부글, 치지직, 펑!\n번쩍! 빛이 나며 글자가 춤을 춰요.\n{nameLetters}.\n\"와! {name}다!\""
         },
         {
-          "scene": 11,
+          "scene": 12,
           "title": "괴물의 탐심",
           "illustration": "shadow_attack",
           "textColor": "white",
           "textPosition": "center",
-          "text": "괴물이 다시 왔어요. 쿵, 쿵!\n\"이름은 가져왔느냐?\"\n아빠가 외쳤어요. \"내 아이 이름은 {firstName}!\"\n이름표가 별처럼 반짝 빛나요.\n괴물이 입맛을 다셔요. 꿀꺽.\n\"그 예쁜 이름, 내 거야!\""
+          "text": "괴물이 다시 왔어요. 쿵, 쿵!\n\"이름은 가져왔느냐?\"\n왕이 외쳤어요. \"내 아이 이름은 {firstName}!\"\n순간 괴물의 눈빛이 번뜩.\n\"그 예쁜 이름… 내 거야!\""
         },
         {
-          "scene": 12,
+          "scene": 13,
           "title": "인간 세상으로!",
           "illustration": "light_gate",
           "textColor": "white",
           "textPosition": "bottom",
-          "text": "괴물 손이 쑥~ 뻗어왔어요.\n{parentNames}는 후다닥 뛰었어요.\n괴물은 성큼성큼 쫓아와요.\n\"저기다!\"\n아빠가 지팡이를 휘릭!\n빛의 문이 파앗 열렸어요."
+          "text": "괴물 손이 쑥~ 뻗어왔어요.\n왕과 왕비는 후다닥 뛰었어요.\n괴물은 성큼성큼, 덩커덩커 쫓아와요.\n\"저기다!\" 아빠가 지팡이를 휘릭!\n빛의 문이 파앗 열렸어요."
         },
         {
-          "scene": 13,
+          "scene": 14,
           "title": "잃어버린 지팡이",
           "illustration": "blank",
           "textColor": "white",
           "textPosition": "center",
-          "text": "문으로 쏙 들어갔어요.\n괴물 손이 문틈으로 스윽!\n있는 힘껏 문을 쾅! 닫았어요.\n어라? 요술 지팡이가 툭 떨어졌네요.\n문은 굳게 닫혀버렸어요."
+          "text": "문으로 쏙 들어갔어요. 괴물 손이 문틈으로 스윽!\n왕은 있는 힘껏 요술 지팡이를 휘릭! 휘둘렀어요. 파아앗!\n어라? 요술 지팡이가 문 너머로 툭 떨어졌네요.\n빛의 문은 쮸우웅 작아지다가 퐁! 사라져버렸어요."
         },
         {
-          "scene": 14,
+          "scene": 15,
           "title": "우리의 비밀",
           "illustration": "blank",
           "textColor": "white",
@@ -151,18 +159,18 @@
           "text": "여기는 인간 세상.\n이제 괴물은 못 쫓아와요. 휴우~\n지팡이는 없지만 괜찮아.\n우리 {name}가 최고의 마법이니까.\n사랑해, 우리 {firstName}아."
         },
         {
-          "scene": 15,
+          "scene": 16,
           "title": "에필로그",
           "illustration": "blank",
           "textColor": "white",
           "textPosition": "center",
-          "text": "나중에 알게된 사실인데,\n{name}가 이름 없이 태어난 이유는…\n무한한 가능성을 가지고 태어나서였어요."
+          "text": ""
         }
       ]
     },
     "B": {
       "label": "키즈 모드 (5~8세)",
-      "description": "축복 의미 설명, 16장",
+      "description": "축복 의미 설명, 17장",
       "pages": [
         {
           "scene": 0,
@@ -170,7 +178,7 @@
           "illustration": "blank",
           "textColor": "white",
           "textPosition": "center",
-          "text": "이 이야기는 {name}가 너무 어려서 기억 못할 때 일어난 일이예요."
+          "text": "이 이야기는 {name}가 너무 어려서 기억 못 할 때 일어난 일이에요."
         },
         {
           "scene": 1,
@@ -186,11 +194,11 @@
           "illustration": "castle",
           "textColor": "white",
           "textPosition": "top",
-          "text": "어느 날, 목소리가 우렁찬 왕과 왕비에게\n아기가 태어났어요.\n온 나라가 축하하러 모였죠."
+          "text": "어느 날, 왕과 왕비에게 아기가 태어났어요.\n온 나라가 축하하러 모였죠."
         },
         {
           "scene": 3,
-          "title": "비어있는 이름",
+          "title": "비어 있는 이름",
           "illustration": "castle",
           "textColor": "white",
           "textPosition": "bottom",
@@ -206,14 +214,22 @@
         },
         {
           "scene": 5,
-          "title": "고대의 마법",
+          "title": "왕궁의 오래된 서재",
           "illustration": "ancient_stair",
           "textColor": "white",
           "textPosition": "bottom",
-          "text": "{parentNames}는 왕궁 지하 깊숙한 곳으로 내려갔어요.\n먼지가 쌓인 책장에서 아주 오래된 마법 책을 찾았죠.\n그 책에는 이름을 만드는 비밀이 적혀 있었어요.\n\"세 가지 재료를 모아 마법의 솥에 넣으면 이름이 태어난다.\"\n재료를 구하기 위해 마법의 숲으로 떠나야 했어요."
+          "text": "{parentNames}는 횃불을 들고 왕궁 지하 깊숙한 곳으로 내려갔어요. 돌 계단을 한 칸 한 칸, 조심조심. 물방울이 떨어지고, 차가운 바람이 불어오는 어둠 속을 한참 내려가니, 천 년 동안 아무도 찾지 않았던 서재가 나타났어요."
         },
         {
           "scene": 6,
+          "title": "고대의 마법",
+          "illustration": "magic_book",
+          "textColor": "white",
+          "textPosition": "bottom",
+          "text": "먼지가 쌓인 책장에서 아주 오래된 마법 책을 찾았어요.\n그 책에는 이름을 만드는 비밀이 적혀 있었죠.\n\"세 가지 재료를 모아 마법의 솥에 넣으면 이름이 태어난다.\"\n재료를 구하기 위해 마법의 숲으로 떠나야 했어요."
+        },
+        {
+          "scene": 7,
           "title": "마법의 숲으로",
           "illustration": "forest_run_queen",
           "textColor": "white",
@@ -221,7 +237,7 @@
           "text": "{parentNames}는 아기를 왕궁에 맡기고 숲으로 달렸어요.\n깜깜한 숲속, 가시덤불이 발을 찔러도 멈출 수 없었죠.\n소중한 우리 아기의 이름을 찾아야 하니까요.\n\"조금만 참으렴, 우리가 꼭 지켜줄게.\""
         },
         {
-          "scene": 7,
+          "scene": 8,
           "title": "첫 번째 재료: 반짝이는 별",
           "illustration": "golden_star",
           "textColor": "white",
@@ -229,7 +245,7 @@
           "text": "\"저기 봐요! 어둠 속에서도 빛나는 게 있어요.\"\n그건 영원히 타오르는 별 조각이었어요.\n엄마는 별 조각을 주우며 소원을 빌었어요.\n\"어디서나 반짝반짝 빛나는 아이가 되게 해주세요.\""
         },
         {
-          "scene": 8,
+          "scene": 9,
           "title": "두 번째 재료: 코끼리의 숨결",
           "illustration": "elephant_close",
           "textColor": "white",
@@ -237,7 +253,7 @@
           "text": "숲 깊은 곳에서 삼천 년을 산 코끼리를 만났어요.\n코끼리는 긴 코로 하얀 입김을 불어주었죠.\n이 신비한 숨결은 생명의 기운이에요.\n\"우리 아기, 아프지 말고 오래오래 건강하렴.\""
         },
         {
-          "scene": 9,
+          "scene": 10,
           "title": "세 번째 재료: 거인의 눈물",
           "illustration": "blank",
           "textColor": "white",
@@ -245,7 +261,7 @@
           "text": "마지막으로 숲을 지키는 외로운 거인을 만났어요.\n거인의 눈에서 맑은 눈물이 떨어졌죠.\n눈물은 보석처럼 맑고 따뜻했어요.\n\"차가운 세상에서도 따뜻한 마음을 가진 사람이 되렴.\"\n드디어, 모든 재료가 모였어요!"
         },
         {
-          "scene": 10,
+          "scene": 11,
           "title": "이름의 탄생",
           "illustration": "cauldron",
           "textColor": "white",
@@ -253,7 +269,7 @@
           "text": "타오르는 별 불꽃 위로 마법의 솥이 끓어올라요.\n신비한 재료들에 엄마의 사랑과 아빠의 소원을 더했죠.\n정성껏 저어주자, 환한 빛 속에서 글자가 피어올랐어요.\n{nameLetters}.\n\"세상에서 가장 멋진 이름, {firstName}!\""
         },
         {
-          "scene": 11,
+          "scene": 12,
           "title": "괴물의 탐심",
           "illustration": "shadow_attack",
           "textColor": "white",
@@ -261,7 +277,7 @@
           "text": "일주일이 지나자 괴물이 다시 찾아왔어요.\n아빠는 용기를 내어 {name}의 이름표를 보여주었죠.\n이름표는 별처럼 환하게 빛났어요.\n하지만 괴물은 그 빛을 보자 욕심이 났나 봐요.\n\"크하하! 정말 마음에 드는 이름이야. 내가 가져야겠어!\""
         },
         {
-          "scene": 12,
+          "scene": 13,
           "title": "인간 세상으로!",
           "illustration": "light_gate",
           "textColor": "white",
@@ -269,28 +285,28 @@
           "text": "괴물의 검은 손이 {name}를 잡으려 했어요.\n{parentNames}는 {name}를 품에 안고 필사적으로 달렸죠.\n하지만 괴물은 금세 코앞까지 쫓아왔어요.\n그때 아빠가 요술 지팡이로 차원의 문을 열었어요.\n\"저기다! 인간 세상으로 가는 문이야!\""
         },
         {
-          "scene": 13,
+          "scene": 14,
           "title": "잃어버린 지팡이",
           "illustration": "blank",
           "textColor": "white",
           "textPosition": "center",
-          "text": "가족은 간신히 문 안으로 뛰어들었어요.\n괴물의 손이 끝까지 쫓아왔지만, 온 힘을 다해 문을 닫았죠.\n그런데 너무 서두른 탓일까요?\n그만 요술 지팡이를 문밖에 떨어뜨리고 말았어요.\n이제 다시는 요정 나라로 돌아갈 수 없게 된 거예요."
+          "text": "가족은 간신히 문 안으로 뛰어들었어요.\n괴물의 손이 문틈으로 따라왔어요.\n아빠는 있는 힘껏 요술 지팡이를 휘둘렀어요.\n빛이 번쩍 터지며 괴물의 손이 물러났죠.\n그런데 너무 서두른 탓일까요?\n그만 요술 지팡이가 문 너머로 떨어지고 말았어요.\n빛의 문은 점점 작아지다가 사라져버렸어요.\n이제 다시는 노미네 왕국으로 돌아갈 수 없게 된 거예요."
         },
         {
-          "scene": 14,
+          "scene": 15,
           "title": "우리의 비밀",
           "illustration": "blank",
           "textColor": "white",
           "textPosition": "center",
-          "text": "이곳은 인간 세상이에요. 다행히 괴물은 사라졌죠.\n{parentNames}는 작은 비밀을 간직하기로 했어요.\n우리가 왕과 왕비였다는 것,\n그리고 네가 요정 나라 아이라는 것을요.\n지팡이는 잃어버렸지만 슬프지 않아요.\n우리에게는 '{firstName}'이라는 가장 큰 보물이 있으니까요.\n우리는 여기서 오래오래 행복할 거야. 사랑해."
+          "text": "이곳은 인간 세상이에요. 다행히 괴물은 사라졌죠.\n{parentNames}는 작은 비밀을 간직하기로 했어요.\n우리가 왕과 왕비였다는 것,\n그리고 네가 노미네 왕국의 아이라는 것을요.\n지팡이는 잃어버렸지만 슬프지 않아요.\n우리에게는 '{firstName}'이라는 가장 큰 보물이 있으니까요.\n우리는 여기서 오래오래 행복할 거야.\n사랑해, 우리 {firstName}아."
         },
         {
-          "scene": 15,
+          "scene": 16,
           "title": "에필로그",
           "illustration": "blank",
           "textColor": "white",
           "textPosition": "center",
-          "text": "나중에 알게된 사실인데,\n{name}가 이름 없이 태어난 이유는…\n무한한 가능성을 가지고 태어나서였어요."
+          "text": ""
         }
       ]
     }

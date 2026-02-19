@@ -183,7 +183,7 @@ async def call_removebg_api(image_data: bytes) -> Image.Image:
             "https://api.remove.bg/v1.0/removebg",
             headers={"X-Api-Key": REMOVEBG_API_KEY},
             files={"image_file": ("image.jpg", image_data, "image/jpeg")},
-            data={"size": "auto", "format": "png", "channels": "rgba"},
+            data={"size": "preview", "format": "png", "channels": "rgba"},
         )
     if resp.status_code != 200:
         error_detail = resp.json().get("errors", [{}])[0].get("title", resp.text) if resp.headers.get("content-type", "").startswith("application/json") else resp.text[:200]
@@ -473,8 +473,11 @@ async def remove_background(
         original_w, original_h = image.size
 
         if model == "removebg":
-            # remove.bg API 호출 (외부 서비스)
-            result_rgba = await call_removebg_api(image_data)
+            # remove.bg API 호출 — HEIC 등 비표준 포맷은 JPEG로 변환하여 전송
+            buf = io.BytesIO()
+            image.save(buf, format="JPEG", quality=95)
+            jpeg_data = buf.getvalue()
+            result_rgba = await call_removebg_api(jpeg_data)
             # 원본과 크기가 다를 수 있으므로 원본 크기로 리사이즈
             if result_rgba.size != (original_w, original_h):
                 result_rgba = result_rgba.resize((original_w, original_h), Image.Resampling.LANCZOS)
