@@ -1452,6 +1452,8 @@ async function handleCoverPhotos(files) {
   if (currentPageIndex !== 0) jumpToPage(0);
 
   const firstNewIndex = coverCandidates.length;
+  // Create all candidates first, then start queue
+  const newCandidates = [];
   for (const file of fileArr) {
     const thumbURL = await createPhotoThumb(file);
     const candidate = {
@@ -1468,7 +1470,7 @@ async function handleCoverPhotos(files) {
       loadingText: ''
     };
     coverCandidates.push(candidate);
-    enqueueCandidate(candidate);
+    newCandidates.push(candidate);
   }
 
   // Switch to first new candidate
@@ -1477,6 +1479,10 @@ async function handleCoverPhotos(files) {
   syncCandidateToGlobals(coverCandidates[firstNewIndex]);
   renderCarousel();
   renderCoverControls();
+
+  // Enqueue all at once so the first batch picks up 3
+  newCandidates.forEach(c => processingQueue.push(c));
+  if (!isProcessingQueue) runProcessingQueue();
 }
 
 function selectCoverModel(modelKey) {
