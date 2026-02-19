@@ -1,0 +1,577 @@
+version: "2.0"
+project:
+  name: "bgqa"
+  mode: "accuracy_first"
+  deterministic: true
+  random_seed: 1337
+
+io:
+  image:
+    colorspace: "sRGB"
+    dtype: "float32"
+    range: [0.0, 1.0]
+  alpha:
+    dtype: "float32"
+    range: [0.0, 1.0]
+    binarize_threshold: 0.5
+
+preprocess:
+  derived:
+    gray: true
+    lab: true
+    hsv: true
+  alpha_cleanup:
+    enabled: true
+    preserve_boundary_band: true
+    open_radius_px: 1
+    close_radius_px: 2
+    remove_tiny_components:
+      enabled: true
+      min_area_ratio: 0.00005
+
+geometry:
+  band:
+    base_ratio: 0.004
+    min_px: 3
+    max_px: 12
+    method: "morph_gradient_dilate"
+  rings:
+    use_band_as_ring: true
+  interior:
+    erode_multiplier: 3
+
+debug:
+  enabled: false
+  save_dir: "./debug_bgqa"
+  save_per_candidate: true
+  artifacts:
+    save_band_masks: true
+    save_roi_masks: true
+    save_overlays: true
+    save_halo_heatmaps: true
+    save_roundtrip_samples: true
+    save_metric_json: true
+  roundtrip_samples_to_save: 8
+
+# ---------------------------------------------------------
+# NEW: Optional upstream signals (Face API provides case_type)
+# ---------------------------------------------------------
+signals:
+  # Upstream must provide case_type: KID_PERSON | ADULT_PERSON | TOY_OBJECT
+  require_case_type: true
+
+  # For person cases, upstream should provide face_info (primary bbox, etc.)
+  require_face_info_for_person: true
+
+  # OPTIONAL but strongly recommended for handheld-object logic:
+  # Upstream can also provide hand/pose keypoints or hand ROIs.
+  # If not provided, BGQA can optionally run its own hand detector.
+  hand_roi:
+    prefer_upstream: true
+    allow_internal_detector: true
+    internal_detector: "mediapipe_hands"
+    # If no hands detected, handheld filtering becomes more conservative.
+    no_hand_policy: "strict"   # "strict" or "relaxed"
+
+# -----------------------------
+# Metric modules (global defaults)
+# -----------------------------
+metrics:
+  edge_alignment:
+    enabled: true
+    gradient_op: "scharr"
+    corr_method: "pearson"
+    evaluate_on: "band"
+    normalize:
+      method: "clip_minmax"
+      in_range: [-1.0, 1.0]
+      out_range: [0.0, 1.0]
+
+  boundary_f1:
+    enabled: true
+    canny:
+      low: 60
+      high: 160
+      blur_sigma: 1.0
+    tolerance_px:
+      base: 2
+      scale_with_r: true
+      max_extra: 4
+
+  halo_bleed:
+    enabled: true
+    colorspace: "LAB"
+    use_mean_based_bleed: true
+    use_distribution_based_bleed: true
+    distribution:
+      model: "gaussian"
+      mahalanobis_clip: 6.0
+    normalize:
+      method: "clip_minmax"
+      in_range: [0.0, 1.0]
+      out_range: [0.0, 1.0]
+
+  alpha_transition:
+    enabled: true
+    low: 0.2
+    high: 0.8
+    bell_shape:
+      enabled: true
+      tw0: 0.32
+      sigma: 0.12
+    gradient_energy:
+      enabled: true
+      evaluate_on: "band"
+      normalize:
+        method: "robust_z"
+        median: 0.04
+        iqr: 0.03
+        out_clip: [0.0, 1.0]
+    smoothness_laplacian:
+      enabled: true
+      evaluate_on: "band"
+      penalty_strength: 1.0
+      normalize:
+        method: "robust_z"
+        median: 0.03
+        iqr: 0.02
+        out_clip: [0.0, 1.0]
+
+  residue_components:
+    enabled: true
+    connectivity: 8
+    main_component: "largest"
+    residue_ratio:
+      normalize:
+        method: "clip_minmax"
+        in_range: [0.0, 0.10]
+        out_range: [1.0, 0.0]
+    fragmentation:
+      enabled: true
+      cc_count_soft_cap: 6
+      cc_count_hard_cap: 30
+      normalize:
+        method: "clip_minmax"
+        in_range: [0.0, 1.0]
+        out_range: [0.0, 1.0]
+
+  holes:
+    enabled: true
+    normalize:
+      method: "clip_minmax"
+      in_range: [0.0, 0.08]
+      out_range: [1.0, 0.0]
+    allow_structural_holes: false
+
+  thin_structures:
+    enabled: true
+    skeletonize:
+      method: "skimage"
+    length_norm:
+      normalize:
+        method: "robust_z"
+        median: 0.12
+        iqr: 0.08
+        out_clip: [0.0, 1.0]
+    breakage:
+      enabled: true
+      normalize:
+        method: "clip_minmax"
+        in_range: [0.00, 0.18]
+        out_range: [1.0, 0.0]
+    multiscale_stability:
+      enabled: true
+      method: "skeleton_feature_agreement"
+      normalize:
+        method: "clip_minmax"
+        in_range: [0.50, 0.95]
+        out_range: [0.0, 1.0]
+
+  agreement:
+    enabled: true
+    method: "mean_pairwise_iou"
+    normalize:
+      method: "clip_minmax"
+      in_range: [0.50, 0.95]
+      out_range: [0.0, 1.0]
+    penalty_if_low: true
+    low_threshold: 0.55
+    penalty_strength: 0.15
+
+# -----------------------------
+# Roundtrip (self-verification)
+# -----------------------------
+roundtrip:
+  enabled: true
+  backgrounds:
+    dir: "assets/backgrounds"
+    min_count: 64
+    num_samples: 64
+    sampling: "random_without_replacement"
+    generate_synthetic:
+      enabled: true
+      solid_colors: 8
+      gradients: 8
+      noise_patterns: 16
+  degradations:
+    jpeg_quality: [40, 60, 80]
+    gaussian_blur_sigma: [0.5, 1.0]
+    gaussian_noise_sigma: [0.01]
+    rescale_factors: [0.75, 1.0]
+  resegn:
+    use_primary: true
+    use_secondary: true
+    binarize_threshold: 0.5
+  scoring:
+    bf1_weight: 0.6
+    std_penalty: 0.8
+    combine_primary_secondary:
+      primary_weight: 0.6
+      secondary_weight: 0.4
+  region_roundtrip:
+    enabled: true
+    use_boundary_f1: true
+
+augmentation_invariance:
+  enabled: true
+  num_augs: 20
+  photometric:
+    brightness_delta: [-0.10, 0.10]
+    contrast_scale: [0.90, 1.10]
+    saturation_scale: [0.90, 1.10]
+    hue_delta: [-0.02, 0.02]
+    gamma: [0.90, 1.10]
+  noise_sigma: [0.0, 0.005, 0.01]
+  blur_sigma: [0.0, 0.5, 1.0]
+  jpeg_quality: [60, 80]
+  resize_scales: [0.75, 1.0, 1.25]
+  flip_horizontal: false
+  scoring:
+    std_penalty: 0.6
+
+next_step:
+  ok_min_score: 85
+  run_refiner_min_score: 70
+  run_fallback_api_min_score: 40
+  below_fallback_request_new_input: 40
+
+# ---------------------------------------------------------
+# NEW: Handheld extras filter (컵 PASS, 유모차 잔재 FAIL)
+# ---------------------------------------------------------
+extras_handheld_filter:
+  enabled: true
+
+  # Concept:
+  # 1) Obtain person-only mask P_bin using segment_fn_person OR upstream provided person_mask.
+  # 2) extras = A_bin AND (NOT P_bin).
+  # 3) Split extras into connected components and classify each as:
+  #    - allowed_handheld (keep as valid foreground) OR
+  #    - forbidden_residue (background residue) -> fail/penalty.
+  required_inputs:
+    # at least one of these must be available in person cases
+    person_mask_source_priority: ["upstream_person_mask", "segment_fn_person"]
+    # hand roi is optional but strongly recommended; if missing, policy applies
+    hand_roi_optional: true
+
+  object_detection:
+    enabled: true
+    # If you have a detector, use it. If not, keep enabled=false.
+    detector_source_priority: ["upstream_detections", "internal_detector"]
+    internal_detector: "yolov8"   # example; implement as pluggable
+    deny_classes: ["stroller", "shopping_cart", "chair", "table", "car_seat", "sofa", "bed", "bicycle"]
+    allow_classes: ["cup", "paper_cup", "bottle", "toy", "book", "phone", "plush", "ball"]
+    # If deny class overlaps with an extras component, it becomes forbidden immediately.
+    deny_iou_threshold: 0.20
+    allow_iou_threshold: 0.15
+
+  component_analysis:
+    connectivity: 8
+    # Base thresholds are relative to person size (P_bin area and bbox)
+    features:
+      # area_ratio = area(Ci) / area(P_bin)
+      area_ratio:
+        small_object_max_kid: 0.06
+        small_object_max_adult: 0.04
+        large_object_fail: 0.20
+
+      # outside_ratio = area(Ci outside expanded_person_bbox)/area(Ci)
+      person_bbox_expand:
+        scale: 1.20
+      outside_ratio:
+        allow_max: 0.15
+        fail_min: 0.40
+
+      # diag_ratio = diag(bbox(Ci)) / diag(bbox(P_bin))
+      diag_ratio:
+        allow_max: 0.55
+        fail_min: 0.70
+
+      # hand_overlap = area(Ci ∩ ROI_HAND)/area(Ci)
+      hand_overlap:
+        min_allow: 0.05
+        # if no hands, behavior depends on signals.hand_roi.no_hand_policy
+
+      # shape elongation: elongated leftovers often come from strollers/frames
+      elongation:
+        # bbox aspect ratio max for handheld; too elongated is suspicious
+        allow_max: 4.0
+        fail_min: 7.0
+
+    rules:
+      # allowed_handheld if ALL required conditions pass
+      allowed_if:
+        require_hand_overlap: true
+        require_small_area: true
+        require_near_person_bbox: true
+        require_not_too_long: true
+      forbidden_if_any:
+        - "area_ratio >= large_object_fail"
+        - "outside_ratio >= outside_ratio.fail_min"
+        - "diag_ratio >= diag_ratio.fail_min"
+        - "elongation >= elongation.fail_min"
+        - "deny_class_overlap == true"
+
+  scoring:
+    # forbidden_extras_area_ratio = total_area(forbidden components)/area(P_bin)
+    forbidden_extras_area_ratio:
+      # hard fail threshold is case-specific
+      hard_fail_kid: 0.005
+      hard_fail_adult: 0.007
+      hard_fail_toy: 0.020
+      # soft penalty starts above this
+      soft_penalty_start: 0.001
+      soft_penalty_strength: 0.25
+
+    # allowed_extras area is not penalized (this is the "cup with kid" pass case)
+    # but if allowed_extras is too large, still suspicious:
+    allowed_extras_area_ratio_warn:
+      warn_kid: 0.08
+      warn_adult: 0.06
+
+  integration:
+    # how this module affects final evaluation
+    # 1) Update residue metrics: treat forbidden extras as residue fragments.
+    # 2) Add hard gate if forbidden_extras_area_ratio > hard_fail threshold.
+    # 3) Add an explicit metric 'extras_cleanliness' (1 - forbidden ratio scaled).
+    add_metric_extras_cleanliness: true
+    extras_cleanliness_weight_in_residue_fragmentation: 0.35
+
+# -----------------------------
+# Case-specific configs
+# -----------------------------
+cases:
+
+  KID_PERSON:
+    description: "Kid/person. Strictest around face + hairline + thin details."
+    gates:
+      area_min: 0.02
+      area_max: 0.90
+
+      require_face: true
+      primary_face_coverage_min: 0.995
+      secondary_face_coverage_min: 0.95
+      secondary_face_enforce: "soft_penalty"
+
+      face_holes_area_ratio_max: 0.001
+      residue_ratio_max_hard_fail: 0.02
+
+      interior_low_alpha_threshold: 0.98
+      interior_low_alpha_frac_max: 0.01
+
+      # NEW: forbidden extras gate (stroller residue)
+      forbidden_extras_area_ratio_max_hard_fail: 0.005
+
+    roi:
+      face_margin_px: 6
+      hair_band:
+        top_expand_min: 1.0
+        top_expand_max: 1.6
+        side_expand_min: 0.2
+        side_expand_max: 0.6
+      neck_band:
+        bottom_expand_min: 0.4
+        bottom_expand_max: 0.8
+        side_expand_min: 0.2
+        side_expand_max: 0.6
+      shoulder_band:
+        left_expand_min: 0.8
+        left_expand_max: 1.4
+        right_expand_min: 0.8
+        right_expand_max: 1.4
+        down_expand_min: 1.2
+        down_expand_max: 2.0
+      landmarks:
+        enabled: true
+        keypoint_margin_px: 10
+
+    weights:
+      roundtrip: 0.38
+      region_score: 0.18
+      halo_bleed: 0.12
+      thin_structures: 0.12
+      edges: 0.10
+      residue_fragmentation: 0.06
+      alpha_transition: 0.04
+
+    region_score_weights:
+      face_edge_align: 0.25
+      face_roundtrip: 0.25
+      hair_bleed: 0.20
+      neck_halo: 0.15
+      face_holes: 0.15
+
+    overrides:
+      metrics:
+        alpha_transition:
+          bell_shape:
+            tw0: 0.36
+            sigma: 0.14
+          smoothness_laplacian:
+            penalty_strength: 0.7
+        holes:
+          allow_structural_holes: false
+        residue_components:
+          residue_ratio:
+            normalize:
+              in_range: [0.0, 0.06]
+              out_range: [1.0, 0.0]
+
+  ADULT_PERSON:
+    description: "Adult/person. Very strict face, slightly relaxed hair micro-details."
+    gates:
+      area_min: 0.02
+      area_max: 0.90
+
+      require_face: true
+      primary_face_coverage_min: 0.985
+      secondary_face_coverage_min: 0.93
+      secondary_face_enforce: "soft_penalty"
+
+      face_holes_area_ratio_max: 0.001
+      residue_ratio_max_hard_fail: 0.02
+
+      interior_low_alpha_threshold: 0.98
+      interior_low_alpha_frac_max: 0.012
+
+      # NEW: forbidden extras gate
+      forbidden_extras_area_ratio_max_hard_fail: 0.007
+
+    roi:
+      face_margin_px: 6
+      hair_band:
+        top_expand_min: 0.9
+        top_expand_max: 1.4
+        side_expand_min: 0.2
+        side_expand_max: 0.5
+      neck_band:
+        bottom_expand_min: 0.35
+        bottom_expand_max: 0.75
+        side_expand_min: 0.2
+        side_expand_max: 0.5
+      shoulder_band:
+        left_expand_min: 0.8
+        left_expand_max: 1.3
+        right_expand_min: 0.8
+        right_expand_max: 1.3
+        down_expand_min: 1.1
+        down_expand_max: 1.8
+      landmarks:
+        enabled: true
+        keypoint_margin_px: 10
+
+    weights:
+      roundtrip: 0.35
+      region_score: 0.16
+      halo_bleed: 0.14
+      thin_structures: 0.10
+      edges: 0.12
+      residue_fragmentation: 0.08
+      alpha_transition: 0.05
+
+    region_score_weights:
+      face_edge_align: 0.22
+      face_roundtrip: 0.26
+      hair_bleed: 0.18
+      neck_halo: 0.18
+      face_holes: 0.16
+
+    overrides:
+      metrics:
+        alpha_transition:
+          bell_shape:
+            tw0: 0.30
+            sigma: 0.12
+          smoothness_laplacian:
+            penalty_strength: 0.9
+        residue_components:
+          residue_ratio:
+            normalize:
+              in_range: [0.0, 0.07]
+              out_range: [1.0, 0.0]
+
+  TOY_OBJECT:
+    description: "Toy/object. No face ROI. Focus on structure preservation, halo, residue."
+    gates:
+      area_min: 0.005
+      area_max: 0.95
+
+      require_face: false
+      residue_ratio_max_hard_fail: 0.05
+
+      interior_low_alpha_threshold: 0.0
+      interior_low_alpha_frac_max: 1.0
+      face_holes_area_ratio_max: 1.0
+
+      # forbidden extras not relevant (no person mask), but keep a high threshold
+      forbidden_extras_area_ratio_max_hard_fail: 0.020
+
+    roi:
+      skeleton_zone:
+        enabled: true
+        band_multiplier: 2.0
+      hole_zone:
+        enabled: true
+        band_multiplier: 1.5
+
+    weights:
+      roundtrip: 0.34
+      edges: 0.16
+      halo_bleed: 0.16
+      thin_structures: 0.14
+      residue_fragmentation: 0.12
+      holes: 0.06
+      alpha_transition: 0.02
+
+    overrides:
+      metrics:
+        holes:
+          allow_structural_holes: true
+          normalize:
+            in_range: [0.0, 0.18]
+            out_range: [1.0, 0.0]
+        alpha_transition:
+          bell_shape:
+            tw0: 0.26
+            sigma: 0.10
+        residue_components:
+          residue_ratio:
+            normalize:
+              in_range: [0.0, 0.12]
+              out_range: [1.0, 0.0]
+
+hard_fail_behavior:
+  cap_score: 5
+  all_fail_strategy: "pick_highest_score_with_flag"
+
+reason_strings:
+  G0_SANITY: "Invalid alpha/image (NaN/Inf or shape mismatch)."
+  G1_AREA: "Foreground area too small/large for this case."
+  G2_FACE_COVER: "Face not fully covered by mask (face cut)."
+  G3_FACE_HOLES: "Holes/tears detected inside face region."
+  G4_RESIDUE: "Background residue fragments detected."
+  G5_OPACITY: "Foreground interior not opaque (unexpected transparency/holes)."
+  G6_FORBIDDEN_EXTRAS: "Forbidden large/background extras detected (e.g., stroller residue)."
+  LOW_ROUNDTRIP: "Unstable mask under background changes (roundtrip inconsistency)."
+  HIGH_HALO: "Halo/color-bleed near boundary."
+  THIN_LOSS: "Thin structures likely lost (hair/strings/fingers)."
+  EXTRAS_WARN: "Large handheld extras detected; may be unintended foreground."

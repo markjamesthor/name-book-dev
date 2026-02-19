@@ -1,0 +1,112 @@
+{
+  "themeId": "ryan_default",
+  "themeName": "Chain Reaction Book",
+  "version": "1.0.0",
+  "pageCount": 24,
+  "description": "좋아하는 것들의 연쇄반응으로 아이에게 도달하는 따뜻한 동화책",
+
+  "pageStructure": [
+    { "page": 1, "type": "title", "template": "title" },
+    { "page": 2, "type": "intro", "template": "child_intro" },
+    { "page": 3, "type": "chain_question", "chainIndex": 0 },
+    { "page": 4, "type": "chain_answer", "chainIndex": 0 },
+    { "page": 5, "type": "chain_question", "chainIndex": 1 },
+    { "page": 6, "type": "chain_answer", "chainIndex": 1 },
+    { "page": 7, "type": "chain_question", "chainIndex": 2 },
+    { "page": 8, "type": "chain_answer", "chainIndex": 2 },
+    { "page": 9, "type": "chain_question", "chainIndex": 3 },
+    { "page": 10, "type": "chain_answer", "chainIndex": 3 },
+    { "page": 11, "type": "climax_question" },
+    { "page": 12, "type": "climax_heart" },
+    { "page": 13, "type": "child_reveal" },
+    { "page": 14, "type": "all_together" },
+    { "page": 15, "type": "family_intro" },
+    { "page": 16, "type": "family_grid" },
+    { "page": 17, "type": "family_grid_2" },
+    { "page": 18, "type": "child_loves_family" },
+    { "page": 19, "type": "child_loves_family_2" },
+    { "page": 20, "type": "who_best" },
+    { "page": 21, "type": "secret" },
+    { "page": 22, "type": "character_intro" },
+    { "page": 23, "type": "character_intro_2" },
+    { "page": 24, "type": "credits" }
+  ],
+
+  "textTemplates": {
+    "title": "나는 {object:를} 좋아해",
+    "intro_question": "{child:야},\n너는 뭘 좋아해?",
+    "intro_answer": "나는 {object:를} 좋아해!",
+    "chain_question": "{object:vocative},\n너는 뭘 좋아해?",
+    "chain_answer": "나는 {target:를} 좋아해.",
+    "chain_answer_to_child": "나는 {child:를} 좋아해.",
+    "climax_question": "그럼 {object:는}\n뭘 제일 좋아하냐면...",
+    "climax_heart": "두근두근...",
+    "child_reveal": "바로 {child}!",
+    "all_together": "모두 함께!",
+    "family_intro_exclamation": "잠깐만!",
+    "family_love": "우리도 {child:를} 좋아해!",
+    "child_loves_family": "나도 {relations:를} 좋아해!",
+    "who_best": "누가 제일 좋아?",
+    "secret": "비밀인데...\n{child:가} 제일 좋아하는 건\n바로 너야!",
+    "character_intro": "등장인물 소개",
+    "credits": "{child}의 특별한 이야기"
+  },
+
+  "familyLayouts": {
+    "1-2": { "type": "1x2", "columns": 2, "rows": 1, "perPage": 2 },
+    "3-4": { "type": "2x2", "columns": 2, "rows": 2, "perPage": 4 },
+    "5-6": { "type": "2x3", "columns": 3, "rows": 2, "perPage": 6 },
+    "7+": { "type": "3x3", "columns": 3, "rows": 3, "perPage": 9 }
+  },
+
+  "familyOptions": [
+    { "id": "dad", "relation": "아빠", "emoji": "👨" },
+    { "id": "mom", "relation": "엄마", "emoji": "👩" },
+    { "id": "grandpa", "relation": "할아버지", "emoji": "👴" },
+    { "id": "grandma", "relation": "할머니", "emoji": "👵" },
+    { "id": "uncle", "relation": "삼촌", "emoji": "👨‍🦱" },
+    { "id": "aunt", "relation": "이모", "emoji": "👩‍🦱" },
+    { "id": "brother", "relation": "형/오빠", "emoji": "👦" },
+    { "id": "sister", "relation": "언니/누나", "emoji": "👧" }
+  ],
+
+  "defaultObjects": [
+    { "name": "나니노뇨 토끼", "emoji": "🐰", "josaMode": "friend" },
+    { "name": "타요", "emoji": "🚌", "josaMode": "friend" },
+    { "name": "투닙", "emoji": "🥕", "josaMode": "friend" },
+    { "name": "페소", "emoji": "🐧", "josaMode": "friend" }
+  ],
+
+  "josaModes": {
+    "friend": {
+      "label": "친구",
+      "description": "의인화하여 친구처럼 부르기",
+      "icon": "🧸",
+      "vocativeStyle": "아/야 호칭 사용",
+      "example": {
+        "name": "로봇",
+        "vocative": "로봇아",
+        "objective": "로봇이를"
+      }
+    },
+    "object": {
+      "label": "사물",
+      "description": "사물로서 지칭하기",
+      "icon": "📦",
+      "vocativeStyle": "이름만 사용",
+      "example": {
+        "name": "로봇",
+        "vocative": "로봇",
+        "objective": "로봇을"
+      }
+    }
+  },
+
+  "metadata": {
+    "copyright": "라이언북",
+    "targetAge": "2-7세",
+    "language": "ko-KR",
+    "maxObjects": 4,
+    "maxFamilyMembers": 8
+  }
+}

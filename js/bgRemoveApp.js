@@ -1,9 +1,11 @@
 /**
  * 배경 제거 프로토타입 - 앱 로직
- * 서버: localhost:5001 /remove-bg
+ * 서버: Windows RTX /remove-bg
  */
 
-const API_URL = 'http://localhost:5001';
+const API_URL = location.hostname.includes('github.io')
+  ? 'https://ai.monviestory.co.kr'
+  : 'http://59.10.238.17:5001';
 
 // ========== DOM ==========
 const els = {

@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>캠핑장 에디터 (조명 유지 + 지우개)</title>
+    <link rel="stylesheet" href="css/main.css">
+</head>
+<body class="hide-controls-border">
+    <!-- 서버 설정 버튼 -->
+    <button id="settings-btn" title="서버 설정">⚙️</button>
+
+    <!-- 서버 설정 모달 -->
+    <div id="settings-modal">
+        <div class="settings-modal-content">
+            <h3>🔧 서버 설정</h3>
+            <p class="settings-description">시연 장소에 따라 서버 IP를 변경할 수 있습니다.</p>
+
+            <div class="settings-group">
+                <label for="main-server-input">메인 서버 URL (Windows/RTX)</label>
+                <input type="text" id="main-server-input" placeholder="http://172.30.1.51:5000">
+            </div>
+
+            <div class="settings-group">
+                <label for="backup-server-input">백업 서버 URL (Mac/Local)</label>
+                <input type="text" id="backup-server-input" placeholder="http://localhost:5001">
+            </div>
+
+            <div class="settings-buttons">
+                <button id="settings-save-btn" class="settings-btn-primary">💾 저장</button>
+                <button id="settings-reset-btn" class="settings-btn-secondary">🔄 초기화</button>
+                <button id="settings-close-btn" class="settings-btn-cancel">닫기</button>
+            </div>
+
+            <div class="settings-current">
+                <h4>현재 설정</h4>
+                <div id="current-main-server">-</div>
+                <div id="current-backup-server">-</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 범례 패널 -->
+    <div id="legend-panel">
+        <h3>🔍 관절 번호표</h3>
+        <div id="legend-list"></div>
+    </div>
+
+    <!-- 왼쪽 대시보드 -->
+    <div id="dashboard">
+        <h2>📊 사진 분석 대시보드</h2>
+        <button id="generate-btn" disabled>🎨 생성하기</button>
+
+        <div class="category-section category-good">
+            <div class="category-title">
+                <span>✅</span>
+                <span>모든 전산이 양호한 사진</span>
+            </div>
+            <div class="thumbnail-count">0개</div>
+            <div class="thumbnail-grid" id="good-thumbnails"></div>
+        </div>
+
+        <div class="category-section category-suspicious">
+            <div class="category-title">
+                <span>⚠️</span>
+                <span>불완전이 의심되는 사진</span>
+            </div>
+            <div class="thumbnail-count">0개</div>
+            <div class="thumbnail-grid" id="suspicious-thumbnails"></div>
+        </div>
+
+        <div class="category-section category-cut">
+            <div class="category-title">
+                <span>❌</span>
+                <span>부분이 잘린게 확신되는 사진</span>
+            </div>
+            <div class="thumbnail-count">0개</div>
+            <div class="thumbnail-grid" id="cut-thumbnails"></div>
+        </div>
+
+        <div class="category-section category-multi">
+            <div class="category-title">
+                <span>👥</span>
+                <span>0명 또는 두 명 이상 감지된 사진</span>
+            </div>
+            <div class="thumbnail-count">0개</div>
+            <div class="thumbnail-grid" id="multi-thumbnails"></div>
+        </div>
+    </div>
+
+    <!-- 컨트롤 패널 -->
+    <div id="controls">
+        <h2>🎛️ 컨트롤 대시보드</h2>
+        <div class="control-group" style="border-bottom: 1px solid #555; padding-bottom: 15px;">
+            <label>📏 아이 사진 면적</label>
+            <div class="info-box">
+                <div class="score-row">
+                    <span>스테이지 대비:</span>
+                    <span id="kid-area-pct" class="score-val" style="color: #4CAF50;">-</span>
+                </div>
+            </div>
+            <div style="font-size: 0.7rem; color: #aaa; margin-top: 5px; text-align: center;">
+                * 배경 제거된 실제 픽셀 면적 기준
+            </div>
+        </div>
+
+        <div class="control-group" style="border-bottom: 1px solid #555; padding-bottom: 15px;">
+            <label>🧒 자세 판단</label>
+            <div class="info-box">
+                <div class="score-row">
+                    <span>자세:</span>
+                    <span id="posture-result" class="score-val" style="color: #4CAF50;">-</span>
+                </div>
+                <div class="score-row">
+                    <span>왼쪽 무릎 각도:</span>
+                    <span id="posture-angle-l" class="score-val">-</span>
+                </div>
+                <div class="score-row">
+                    <span>오른쪽 무릎 각도:</span>
+                    <span id="posture-angle-r" class="score-val">-</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="control-group" style="border-bottom: 1px solid #555; padding-bottom: 15px;">
+            <label>📐 배치 그리드</label>
+            <button id="grid-btn" class="btn" onclick="toggleGrid()">그리드 켜기</button>
+        </div>
+
+        <div class="control-group" style="border-bottom: 1px solid #555; padding-bottom: 15px;">
+            <label>🦴 관절 마커 (기본: OFF)</label>
+            <button id="marker-btn" class="btn" onclick="toggleMarkers()">마커 켜기</button>
+        </div>
+
+        <div class="control-group" style="border-bottom: 1px solid #555; padding-bottom: 15px;">
+            <label>🤖 포즈 감지 모델</label>
+            <div class="radio-group" id="pose-model-group">
+                <label class="radio-label">
+                    <input type="radio" name="pose-model" value="blazepose">
+                    <span>BlazePose (빠름)</span>
+                </label>
+                <label class="radio-label">
+                    <input type="radio" name="pose-model" value="vitpose">
+                    <span>ViTPose (정확)</span>
+                </label>
+                <label class="radio-label">
+                    <input type="radio" name="pose-model" value="vitpose-huge">
+                    <span>ViTPose-Huge (최고)</span>
+                </label>
+            </div>
+        </div>
+
+        <div class="control-group" style="border-bottom: 1px solid #555; padding-bottom: 15px;">
+            <label>🖥️ 배경 제거 서버</label>
+            <div class="radio-group radio-horizontal" id="bg-server-group">
+                <label class="radio-label">
+                    <input type="radio" name="bg-server" value="windows">
+                    <span>Windows (RTX)</span>
+                </label>
+                <label class="radio-label">
+                    <input type="radio" name="bg-server" value="mac">
+                    <span>Mac (Local)</span>
+                </label>
+            </div>
+        </div>
+
+        <div class="control-group" style="border-bottom: 1px solid #555; padding-bottom: 15px;">
+            <label>🎨 배경 제거 모델 <span class="info-icon" data-tooltip="각 모델의 내부 처리 해상도:&#10;• Portrait: 1024px&#10;• HR: 2048px&#10;• HR-Matting: 2048px&#10;• Dynamic: 1024px">ⓘ</span></label>
+            <div class="radio-group" id="bg-model-group">
+                <label class="radio-label">
+                    <input type="radio" name="bg-model" value="portrait">
+                    <span>BiRefNet-Portrait (인물 최적화)</span>
+                    <span class="model-info">1024px</span>
+                </label>
+                <label class="radio-label">
+                    <input type="radio" name="bg-model" value="hr">
+                    <span>BiRefNet-HR (고해상도)</span>
+                    <span class="model-info">2048px</span>
+                </label>
+                <label class="radio-label">
+                    <input type="radio" name="bg-model" value="hr-matting">
+                    <span>BiRefNet-HR-Matting (머리카락)</span>
+                    <span class="model-info">2048px</span>
+                </label>
+                <label class="radio-label">
+                    <input type="radio" name="bg-model" value="dynamic">
+                    <span>BiRefNet-Dynamic (범용)</span>
+                    <span class="model-info">1024px</span>
+                </label>
+                <label class="radio-label">
+                    <input type="radio" name="bg-model" value="rmbg2">
+                    <span>RMBG 2.0 (Bria AI - SOTA)</span>
+                    <span class="model-info">1024px</span>
+                </label>
+            </div>
+        </div>
+
+        <div class="control-group" style="border-bottom: 1px solid #555; padding-bottom: 15px;">
+            <label>🖼️ 배경 제거 품질</label>
+            <div class="radio-group" id="bg-quality-group">
+                <label class="radio-label">
+                    <input type="radio" name="bg-quality" value="original">
+                    <span>원본 - 매우 느림</span>
+                </label>
+                <label class="radio-label">
+                    <input type="radio" name="bg-quality" value="2500">
+                    <span>최고 (2500px)</span>
+                </label>
+                <label class="radio-label">
+                    <input type="radio" name="bg-quality" value="2048">
+                    <span>고품질 (2048px)</span>
+                </label>
+                <label class="radio-label">
+                    <input type="radio" name="bg-quality" value="1440">
+                    <span>중품질 (1440px) - 권장</span>
+                </label>
+                <label class="radio-label">
+                    <input type="radio" name="bg-quality" value="1024">
+                    <span>저품질 (1024px) - 빠름</span>
+                </label>
+            </div>
+        </div>
+
+        <div class="control-group" style="border-bottom: 1px solid #555; padding-bottom: 15px;">
+            <label>🧹 지우개 (배경 정리)</label>
+            <div class="eraser-btn-group">
+                <button id="eraser-btn" class="btn" onclick="toggleEraserMode()">🧹 지우개</button>
+                <button id="smart-eraser-btn" class="btn" onclick="toggleSmartEraserMode()">✨ 스마트 지우개</button>
+            </div>
+            <div id="eraser-size-controls" style="font-size: 0.8rem; margin-top: 5px; color: #aaa;">
+                크기 조절: <span id="eraser-size-val">20</span>px
+                <input type="range" id="eraser-size-slider" min="5" max="100" value="20">
+            </div>
+        </div>
+
+        <div class="control-group" style="border-bottom: 1px solid #555; padding-bottom: 15px;">
+            <label>🔲 오브젝트 컨트롤 테두리</label>
+            <button id="controls-border-btn" class="btn" onclick="toggleControlsBorder()">테두리 켜기</button>
+        </div>
+
+        <div class="control-group" style="border-bottom: 1px solid #555; padding-bottom: 15px;">
+            <label>📊 현재 사진 확신도 (기준: 0.8)</label>
+            <div class="info-box">
+                <div class="score-row">
+                    <span>왼발(31):</span>
+                    <span id="score-l" class="score-val">-</span>
+                </div>
+                <div class="score-row">
+                    <span>오른발(32):</span>
+                    <span id="score-r" class="score-val">-</span>
+                </div>
+            </div>
+            <div style="font-size: 0.7rem; color: #aaa; margin-top: 5px; text-align: center;">
+                * 스크롤하면 해당 사진 값으로 바뀝니다.
+            </div>
+        </div>
+
+        <div class="control-group" style="border-bottom: 1px solid #555; padding-bottom: 15px;">
+            <label>👃 코(0번) 위치 추적</label>
+            <div class="info-box">
+                <div class="score-row">
+                    <span>X (좌측 기준):</span>
+                    <span id="nose-x-pct" class="score-val" style="color: #4CAF50;">-</span>
+                </div>
+            </div>
+            <div style="font-size: 0.7rem; color: #aaa; margin-top: 5px; text-align: center;">
+                * 아이를 드래그하면 실시간으로 업데이트됩니다.
+            </div>
+        </div>
+
+        <div class="control-group" style="border-bottom: 1px solid #555; padding-bottom: 15px;">
+            <label>✂️ 스마트 크롭 (실험)</label>
+            <button id="smart-crop-btn" class="btn" onclick="toggleSmartCrop()">크롭 OFF</button>
+            <div style="font-size: 0.7rem; color: #aaa; margin-top: 5px;">
+                * 얼굴+포즈 감지 후 아이만 크롭하여 배경 제거
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>💡 조명 강도: <span id="lighting-intensity-val">75</span>%</label>
+            <input type="range" id="lighting-intensity-slider" min="0" max="100" value="75">
+        </div>
+    </div>
+
+    <!-- 빈 상태 메시지 -->
+    <div id="empty-state">
+        <div id="empty-state-grid"></div>
+        <div class="drop-zone">
+            <div class="drop-icon">📸</div>
+            <div class="drop-text">아이 사진을 이곳에 드래그 하세요</div>
+            <div class="drop-hint">(완료 후 자동으로 맨 위로 복귀)</div>
+        </div>
+    </div>
+
+    <!-- 사진 교체 모달 -->
+    <div id="photo-replace-modal">
+        <div class="replace-modal-content">
+            <h3>사진 선택</h3>
+            <div class="replace-thumbnail-grid" id="replace-thumbnail-grid"></div>
+        </div>
+    </div>
+
+    <!-- 메인 컨테이너 -->
+    <div id="main-wrapper"></div>
+
+    <!-- 로딩 인디케이터 -->
+    <div id="loading">🚀 시스템 준비 중...</div>
+
+    <!-- TensorFlow.js 라이브러리 -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
+
+    <!-- face-api.js (다중 얼굴 감지) - vladmandic 포크 (TF.js 호환) -->
+    <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/dist/face-api.min.js"></script>
+
+    <!-- HEIC→JPEG 변환 (아이폰 사진 Chrome 지원) -->
+    <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+
+    <!-- 애플리케이션 스크립트 (ES 모듈) -->
+    <script type="module" src="js/app.js"></script>
+</body>
+</html>

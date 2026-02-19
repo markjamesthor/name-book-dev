@@ -1,1 +1,23 @@
+# AI Models (대용량 파일)
+models/
+*.safetensors
+*.bin
+*.pt
+
+# OS files
 .DS_Store
+Thumbs.db
+
+# Environments
+venv/
+.env
+
+# Images (용량 관리가 필요할 경우)
+*.png
+*.jpg
+
+# Test images
+test_images/
+
+# PDF output
+PDF-RYAN/

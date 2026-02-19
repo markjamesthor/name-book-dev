@@ -1,0 +1,675 @@
+{
+  "theme_id": "ryan_default",
+  "child_name": "도현",
+  "child_full_name": "김도현",
+  "created_at": "2026-01-17T02:16:53.401253",
+  "pages": [
+    {
+      "page_number": 1,
+      "page_type": "title",
+      "content": {
+        "text": "나는 토끼를 좋아해",
+        "speech_bubble": null,
+        "exclamation": null,
+        "visual": null,
+        "highlight": false,
+        "is_secret": false,
+        "is_question": false,
+        "is_answer": false
+      },
+      "images": [],
+      "layout": null
+    },
+    {
+      "page_number": 2,
+      "page_type": "intro",
+      "content": {
+        "text": "도현아,\n너는 뭘 좋아해?",
+        "speech_bubble": "나는 토끼를 좋아해!",
+        "exclamation": null,
+        "visual": null,
+        "highlight": false,
+        "is_secret": false,
+        "is_question": false,
+        "is_answer": false
+      },
+      "images": [
+        {
+          "type": "child",
+          "path": "ryan_test_images/0_도현.JPG",
+          "emoji": null,
+          "position": "center",
+          "size": "medium",
+          "name": null
+        }
+      ],
+      "layout": null
+    },
+    {
+      "page_number": 3,
+      "page_type": "chain_question",
+      "content": {
+        "text": "토끼야,\n너는 뭘 좋아해?",
+        "speech_bubble": null,
+        "exclamation": null,
+        "visual": null,
+        "highlight": false,
+        "is_secret": false,
+        "is_question": true,
+        "is_answer": false
+      },
+      "images": [
+        {
+          "type": "emoji",
+          "path": null,
+          "emoji": "🐰",
+          "position": "center",
+          "size": "medium",
+          "name": "토끼"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "page_number": 4,
+      "page_type": "chain_answer",
+      "content": {
+        "text": "나는 토마토를 좋아해.",
+        "speech_bubble": null,
+        "exclamation": null,
+        "visual": null,
+        "highlight": false,
+        "is_secret": false,
+        "is_question": false,
+        "is_answer": true
+      },
+      "images": [
+        {
+          "type": "emoji",
+          "path": null,
+          "emoji": "🐰",
+          "position": "center",
+          "size": "medium",
+          "name": "토끼"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "page_number": 5,
+      "page_type": "chain_question",
+      "content": {
+        "text": "토마토,\n너는 뭘 좋아해?",
+        "speech_bubble": null,
+        "exclamation": null,
+        "visual": null,
+        "highlight": false,
+        "is_secret": false,
+        "is_question": true,
+        "is_answer": false
+      },
+      "images": [
+        {
+          "type": "emoji",
+          "path": null,
+          "emoji": "🍅",
+          "position": "center",
+          "size": "medium",
+          "name": "토마토"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "page_number": 6,
+      "page_type": "chain_answer",
+      "content": {
+        "text": "나는 사과가 쿵을 좋아해.",
+        "speech_bubble": null,
+        "exclamation": null,
+        "visual": null,
+        "highlight": false,
+        "is_secret": false,
+        "is_question": false,
+        "is_answer": true
+      },
+      "images": [
+        {
+          "type": "emoji",
+          "path": null,
+          "emoji": "🍅",
+          "position": "center",
+          "size": "medium",
+          "name": "토마토"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "page_number": 7,
+      "page_type": "chain_question",
+      "content": {
+        "text": "사과가 쿵,\n너는 뭘 좋아해?",
+        "speech_bubble": null,
+        "exclamation": null,
+        "visual": null,
+        "highlight": false,
+        "is_secret": false,
+        "is_question": true,
+        "is_answer": false
+      },
+      "images": [
+        {
+          "type": "emoji",
+          "path": null,
+          "emoji": "🍎",
+          "position": "center",
+          "size": "medium",
+          "name": "사과가 쿵"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "page_number": 8,
+      "page_type": "chain_answer",
+      "content": {
+        "text": "나는 엄마 아이폰을 좋아해.",
+        "speech_bubble": null,
+        "exclamation": null,
+        "visual": null,
+        "highlight": false,
+        "is_secret": false,
+        "is_question": false,
+        "is_answer": true
+      },
+      "images": [
+        {
+          "type": "emoji",
+          "path": null,
+          "emoji": "🍎",
+          "position": "center",
+          "size": "medium",
+          "name": "사과가 쿵"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "page_number": 9,
+      "page_type": "chain_question",
+      "content": {
+        "text": "엄마 아이폰,\n너는 뭘 좋아해?",
+        "speech_bubble": null,
+        "exclamation": null,
+        "visual": null,
+        "highlight": false,
+        "is_secret": false,
+        "is_question": true,
+        "is_answer": false
+      },
+      "images": [
+        {
+          "type": "emoji",
+          "path": null,
+          "emoji": "📱",
+          "position": "center",
+          "size": "medium",
+          "name": "엄마 아이폰"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "page_number": 10,
+      "page_type": "chain_answer",
+      "content": {
+        "text": "나는 도현을 좋아해.",
+        "speech_bubble": null,
+        "exclamation": null,
+        "visual": null,
+        "highlight": false,
+        "is_secret": false,
+        "is_question": false,
+        "is_answer": true
+      },
+      "images": [
+        {
+          "type": "emoji",
+          "path": null,
+          "emoji": "📱",
+          "position": "center",
+          "size": "medium",
+          "name": "엄마 아이폰"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "page_number": 11,
+      "page_type": "climax_question",
+      "content": {
+        "text": "그럼 엄마 아이폰은\n뭘 제일 좋아하냐면...",
+        "speech_bubble": null,
+        "exclamation": null,
+        "visual": null,
+        "highlight": false,
+        "is_secret": false,
+        "is_question": false,
+        "is_answer": false
+      },
+      "images": [
+        {
+          "type": "emoji",
+          "path": null,
+          "emoji": "📱",
+          "position": "center",
+          "size": "medium",
+          "name": null
+        }
+      ],
+      "layout": null
+    },
+    {
+      "page_number": 12,
+      "page_type": "climax_heart",
+      "content": {
+        "text": "두근두근...",
+        "speech_bubble": null,
+        "exclamation": null,
+        "visual": "heart",
+        "highlight": false,
+        "is_secret": false,
+        "is_question": false,
+        "is_answer": false
+      },
+      "images": [],
+      "layout": null
+    },
+    {
+      "page_number": 13,
+      "page_type": "child_reveal",
+      "content": {
+        "text": "바로 도현!",
+        "speech_bubble": null,
+        "exclamation": null,
+        "visual": null,
+        "highlight": true,
+        "is_secret": false,
+        "is_question": false,
+        "is_answer": false
+      },
+      "images": [
+        {
+          "type": "child",
+          "path": "ryan_test_images/0_도현.JPG",
+          "emoji": null,
+          "position": "center",
+          "size": "large",
+          "name": null
+        }
+      ],
+      "layout": null
+    },
+    {
+      "page_number": 14,
+      "page_type": "all_together",
+      "content": {
+        "text": "모두 함께!",
+        "speech_bubble": null,
+        "exclamation": null,
+        "visual": null,
+        "highlight": false,
+        "is_secret": false,
+        "is_question": false,
+        "is_answer": false
+      },
+      "images": [
+        {
+          "type": "child",
+          "path": "ryan_test_images/0_도현.JPG",
+          "emoji": null,
+          "position": "center",
+          "size": "medium",
+          "name": null
+        },
+        {
+          "type": "emoji",
+          "path": null,
+          "emoji": "🐰",
+          "position": "center",
+          "size": "medium",
+          "name": "토끼"
+        },
+        {
+          "type": "emoji",
+          "path": null,
+          "emoji": "🍅",
+          "position": "center",
+          "size": "medium",
+          "name": "토마토"
+        },
+        {
+          "type": "emoji",
+          "path": null,
+          "emoji": "🍎",
+          "position": "center",
+          "size": "medium",
+          "name": "사과가 쿵"
+        },
+        {
+          "type": "emoji",
+          "path": null,
+          "emoji": "📱",
+          "position": "center",
+          "size": "medium",
+          "name": "엄마 아이폰"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "page_number": 15,
+      "page_type": "family_intro",
+      "content": {
+        "text": "우리도 도현을 좋아해!",
+        "speech_bubble": null,
+        "exclamation": "잠깐만!",
+        "visual": null,
+        "highlight": false,
+        "is_secret": false,
+        "is_question": false,
+        "is_answer": false
+      },
+      "images": [],
+      "layout": null
+    },
+    {
+      "page_number": 16,
+      "page_type": "family_grid",
+      "content": {
+        "text": "",
+        "speech_bubble": null,
+        "exclamation": null,
+        "visual": null,
+        "highlight": false,
+        "is_secret": false,
+        "is_question": false,
+        "is_answer": false
+      },
+      "images": [
+        {
+          "type": "emoji",
+          "path": null,
+          "emoji": "👩",
+          "position": "center",
+          "size": "medium",
+          "name": "엄마"
+        },
+        {
+          "type": "emoji",
+          "path": null,
+          "emoji": "👨",
+          "position": "center",
+          "size": "medium",
+          "name": "아빠"
+        }
+      ],
+      "layout": {
+        "type": "1x2",
+        "columns": 2,
+        "rows": 1,
+        "members": [
+          {
+            "id": "mom",
+            "relation": "엄마",
+            "emoji": "👩"
+          },
+          {
+            "id": "dad",
+            "relation": "아빠",
+            "emoji": "👨"
+          }
+        ]
+      }
+    },
+    {
+      "page_number": 17,
+      "page_type": "family_grid_2",
+      "content": {
+        "text": "",
+        "speech_bubble": null,
+        "exclamation": null,
+        "visual": null,
+        "highlight": false,
+        "is_secret": false,
+        "is_question": false,
+        "is_answer": false
+      },
+      "images": [],
+      "layout": {
+        "type": "1x2",
+        "columns": 2,
+        "rows": 1,
+        "members": []
+      }
+    },
+    {
+      "page_number": 18,
+      "page_type": "child_loves_family",
+      "content": {
+        "text": "나도 엄마, 아빠를 좋아해!",
+        "speech_bubble": null,
+        "exclamation": null,
+        "visual": null,
+        "highlight": false,
+        "is_secret": false,
+        "is_question": false,
+        "is_answer": false
+      },
+      "images": [
+        {
+          "type": "child",
+          "path": "ryan_test_images/0_도현.JPG",
+          "emoji": null,
+          "position": "center",
+          "size": "medium",
+          "name": null
+        }
+      ],
+      "layout": null
+    },
+    {
+      "page_number": 19,
+      "page_type": "child_loves_family_2",
+      "content": {
+        "text": "나도 엄마, 아빠를 좋아해!",
+        "speech_bubble": null,
+        "exclamation": null,
+        "visual": null,
+        "highlight": false,
+        "is_secret": false,
+        "is_question": false,
+        "is_answer": false
+      },
+      "images": [
+        {
+          "type": "child",
+          "path": "ryan_test_images/0_도현.JPG",
+          "emoji": null,
+          "position": "center",
+          "size": "medium",
+          "name": null
+        }
+      ],
+      "layout": null
+    },
+    {
+      "page_number": 20,
+      "page_type": "who_best",
+      "content": {
+        "text": "누가 제일 좋아?",
+        "speech_bubble": null,
+        "exclamation": null,
+        "visual": null,
+        "highlight": false,
+        "is_secret": false,
+        "is_question": false,
+        "is_answer": false
+      },
+      "images": [
+        {
+          "type": "child",
+          "path": "ryan_test_images/0_도현.JPG",
+          "emoji": null,
+          "position": "center",
+          "size": "medium",
+          "name": null
+        }
+      ],
+      "layout": null
+    },
+    {
+      "page_number": 21,
+      "page_type": "secret",
+      "content": {
+        "text": "비밀인데...\n도현이 제일 좋아하는 건\n바로 너야!",
+        "speech_bubble": null,
+        "exclamation": null,
+        "visual": null,
+        "highlight": false,
+        "is_secret": true,
+        "is_question": false,
+        "is_answer": false
+      },
+      "images": [],
+      "layout": null
+    },
+    {
+      "page_number": 22,
+      "page_type": "character_intro",
+      "content": {
+        "text": "등장인물 소개",
+        "speech_bubble": null,
+        "exclamation": null,
+        "visual": null,
+        "highlight": false,
+        "is_secret": false,
+        "is_question": false,
+        "is_answer": false
+      },
+      "images": [
+        {
+          "type": "emoji",
+          "path": null,
+          "emoji": "🐰",
+          "position": "center",
+          "size": "medium",
+          "name": "토끼"
+        },
+        {
+          "type": "emoji",
+          "path": null,
+          "emoji": "🍅",
+          "position": "center",
+          "size": "medium",
+          "name": "토마토"
+        },
+        {
+          "type": "emoji",
+          "path": null,
+          "emoji": "🍎",
+          "position": "center",
+          "size": "medium",
+          "name": "사과가 쿵"
+        },
+        {
+          "type": "emoji",
+          "path": null,
+          "emoji": "📱",
+          "position": "center",
+          "size": "medium",
+          "name": "엄마 아이폰"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "page_number": 23,
+      "page_type": "character_intro_2",
+      "content": {
+        "text": "등장인물 소개",
+        "speech_bubble": null,
+        "exclamation": null,
+        "visual": null,
+        "highlight": false,
+        "is_secret": false,
+        "is_question": false,
+        "is_answer": false
+      },
+      "images": [
+        {
+          "type": "emoji",
+          "path": null,
+          "emoji": "🐰",
+          "position": "center",
+          "size": "medium",
+          "name": "토끼"
+        },
+        {
+          "type": "emoji",
+          "path": null,
+          "emoji": "🍅",
+          "position": "center",
+          "size": "medium",
+          "name": "토마토"
+        },
+        {
+          "type": "emoji",
+          "path": null,
+          "emoji": "🍎",
+          "position": "center",
+          "size": "medium",
+          "name": "사과가 쿵"
+        },
+        {
+          "type": "emoji",
+          "path": null,
+          "emoji": "📱",
+          "position": "center",
+          "size": "medium",
+          "name": "엄마 아이폰"
+        }
+      ],
+      "layout": null
+    },
+    {
+      "page_number": 24,
+      "page_type": "credits",
+      "content": {
+        "text": "도현의 특별한 이야기",
+        "speech_bubble": null,
+        "exclamation": null,
+        "visual": null,
+        "highlight": false,
+        "is_secret": false,
+        "is_question": false,
+        "is_answer": false
+      },
+      "images": [],
+      "layout": null
+    }
+  ],
+  "family_layout": {
+    "type": "1x2",
+    "columns": 2,
+    "rows": 1,
+    "per_page": 2
+  },
+  "metadata": {
+    "theme_name": "Chain Reaction Book",
+    "version": "1.0.0",
+    "object_count": 4,
+    "family_count": 2
+  }
+}

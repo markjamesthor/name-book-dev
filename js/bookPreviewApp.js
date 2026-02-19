@@ -905,7 +905,7 @@ function renderThumbnails() {
 
 const SMART_CROP_API = location.hostname.includes('github.io')
   ? 'https://ai.monviestory.co.kr'
-  : 'http://172.30.1.80:5001';
+  : 'http://59.10.238.17:5001';
 
 async function smartCropPerson(file) {
   const formData = new FormData();

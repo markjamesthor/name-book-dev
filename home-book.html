@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<style>
+  /* ===== Booktory 본문 규격 (가로형) =====
+     Trim: 250mm × 200mm (가로)
+     Bleed: 3mm 사방
+     Total PDF page: 256mm × 206mm
+     Safe area: trim 안쪽 8mm
+  */
+
+  @page { size: 256mm 206mm; margin: 0; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  @font-face {
+    font-family: 'BookSerif';
+    src: local('RIDIBatang'), local('Noto Serif KR'), local('Batang');
+  }
+
+  body {
+    width: 256mm;
+    margin: 0;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* ===== 페이지 기본 =====  */
+  .page {
+    width: 256mm;
+    height: 206mm;
+    position: relative;
+    overflow: hidden;
+    page-break-after: always;
+  }
+  .page:last-child { page-break-after: auto; }
+
+  .page-bg {
+    position: absolute;
+    top: 0; left: 0;
+    width: 256mm; height: 206mm;
+  }
+
+  /* ===== 배경 이미지 (실제 제작 시 JPG 배경) ===== */
+  .bg-img {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+  }
+
+  /* 배경 플레이스홀더 — 실제로는 bodyJpgPath에서 가져옴 */
+  .bg-placeholder {
+    position: absolute;
+    top: 0; left: 0;
+    width: 256mm; height: 206mm;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: 5mm;
+    font-size: 2.5mm;
+    color: rgba(255,255,255,0.3);
+    letter-spacing: 0.3mm;
+  }
+
+  /* ===== Trim 가이드 (디버그용, production에서 제거) ===== */
+  .trim-guide {
+    position: absolute;
+    top: 3mm; left: 3mm;
+    width: 250mm; height: 200mm;
+    border: 0.15mm dashed rgba(255,0,0,0.2);
+    pointer-events: none;
+    z-index: 999;
+  }
+
+  /* ===== 사진 프레임 ===== */
+  .child-photo {
+    position: absolute;
+    object-fit: cover;
+    z-index: 10;
+  }
+
+  .toy-pet-photo {
+    position: absolute;
+    object-fit: cover;
+    z-index: 10;
+  }
+
+  /* ===== 스토리 텍스트 프레임 ===== */
+  .story-text-frame {
+    position: absolute;
+    left: 15mm;
+    width: 226mm; /* 256 - 15*2 */
+    z-index: 20;
+    text-align: center;
+    font-family: 'BookSerif', 'Noto Serif KR', 'Batang', serif;
+    font-size: 4.2mm;     /* 16pt ≈ 5.6mm, 축소 적용 */
+    line-height: 2.4;     /* leading 38pt at 16pt = 2.375 */
+    word-break: keep-all;
+    white-space: pre-line;
+  }
+  .story-text-frame.color-white { color: #FFFFF0; }
+  .story-text-frame.color-black { color: #1A1A1A; }
+
+  /* ===== 말풍선 ===== */
+  .speech-balloon {
+    position: absolute;
+    z-index: 30;
+    background: white;
+    border-radius: 12mm 12mm 12mm 2mm;
+    padding: 4mm 6mm;
+    font-family: 'BookSerif', 'Noto Serif KR', serif;
+    font-size: 3.5mm;
+    color: #333;
+    box-shadow: 0 0.5mm 2mm rgba(0,0,0,0.15);
+    white-space: pre-line;
+    text-align: center;
+    max-width: 60mm;
+  }
+  .speech-balloon::after {
+    content: '';
+    position: absolute;
+    bottom: -4mm;
+    left: 8mm;
+    width: 0; height: 0;
+    border-left: 5mm solid transparent;
+    border-right: 2mm solid transparent;
+    border-top: 5mm solid white;
+  }
+
+  /* ===== 커버 (가로 스프레드) ===== */
+  .page-cover {
+    width: 256mm; height: 206mm;
+  }
+  .cover-bg {
+    position: absolute;
+    top: 0; left: 0;
+    width: 256mm; height: 206mm;
+  }
+  .cover-title {
+    position: absolute;
+    top: 20mm;
+    width: 256mm;
+    text-align: center;
+    font-family: 'Apple SD Gothic Neo', sans-serif;
+    font-size: 8mm;
+    font-weight: 800;
+    color: white;
+    letter-spacing: 1mm;
+    text-shadow: 0 1mm 3mm rgba(0,0,0,0.3);
+    z-index: 20;
+  }
+  .cover-subtitle {
+    position: absolute;
+    top: 33mm;
+    width: 256mm;
+    text-align: center;
+    font-family: 'BookSerif', serif;
+    font-size: 4mm;
+    color: rgba(255,255,255,0.8);
+    z-index: 20;
+  }
+  .cover-photo {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    height: 150mm;
+    z-index: 10;
+    object-fit: contain;
+  }
+  .cover-author {
+    position: absolute;
+    bottom: 12mm;
+    width: 256mm;
+    text-align: center;
+    font-family: 'BookSerif', serif;
+    font-size: 3mm;
+    color: rgba(255,255,255,0.6);
+    z-index: 20;
+  }
+
+  /* ===== 표제지 ===== */
+  .title-page-bg {
+    background: #FFFDF7;
+  }
+  .title-page-name {
+    position: absolute;
+    top: 40%;
+    width: 256mm;
+    text-align: center;
+    font-family: 'Apple SD Gothic Neo', sans-serif;
+    font-size: 7mm;
+    font-weight: 700;
+    color: #4E342E;
+    z-index: 20;
+  }
+  .title-page-bookname {
+    position: absolute;
+    top: 48%;
+    width: 256mm;
+    text-align: center;
+    font-family: 'BookSerif', serif;
+    font-size: 4.5mm;
+    color: #8D6E63;
+    z-index: 20;
+  }
+  .title-page-photo {
+    position: absolute;
+    top: 55%;
+    right: 25mm;
+    width: 25mm;
+    height: 30mm;
+    object-fit: cover;
+    border-radius: 2mm;
+    z-index: 10;
+  }
+
+  /* ===== 인트로 페이지 (성) ===== */
+  .intro-text {
+    position: absolute;
+    top: 25mm;
+    left: 25mm;
+    width: 206mm;
+    font-family: 'BookSerif', serif;
+    font-size: 4.2mm;
+    line-height: 2.4;
+    color: #FFFFF0;
+    text-align: center;
+    white-space: pre-line;
+    z-index: 20;
+  }
+
+  /* ===== 길 걷는 아이 ===== */
+  .walk-text {
+    position: absolute;
+    bottom: 30mm;
+    width: 256mm;
+    text-align: center;
+    font-family: 'BookSerif', serif;
+    font-size: 4.2mm;
+    line-height: 2.4;
+    color: #FFFFF0;
+    white-space: pre-line;
+    z-index: 20;
+  }
+
+  /* ===== 보물 페이지 ===== */
+  .treasure-text {
+    position: absolute;
+    top: 15mm;
+    width: 256mm;
+    text-align: center;
+    font-family: 'Apple SD Gothic Neo', sans-serif;
+    font-size: 6mm;
+    font-weight: 700;
+    color: #FFD54F;
+    z-index: 20;
+  }
+  .treasure-mirror {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90mm;
+    height: 110mm;
+    border-radius: 50% 50% 45% 45%;
+    overflow: hidden;
+    border: 3mm solid #C9A96E;
+    box-shadow: 0 0 10mm rgba(201,169,110,0.4);
+    z-index: 10;
+  }
+  .treasure-mirror img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+  }
+  .treasure-caption {
+    position: absolute;
+    bottom: 20mm;
+    width: 256mm;
+    text-align: center;
+    font-family: 'BookSerif', serif;
+    font-size: 4.5mm;
+    color: #FFD54F;
+    z-index: 20;
+  }
+
+  /* ===== 엔딩 페이지 ===== */
+  .ending-grid {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8mm;
+    z-index: 10;
+  }
+  .ending-pet {
+    width: 55mm;
+    height: 55mm;
+    border-radius: 50%;
+    overflow: hidden;
+    border: 1.5mm solid rgba(255,255,255,0.5);
+  }
+  .ending-pet img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+  }
+  .ending-pet-name {
+    text-align: center;
+    font-family: 'Apple SD Gothic Neo', sans-serif;
+    font-size: 3mm;
+    color: white;
+    margin-top: 2mm;
+  }
+  .ending-title {
+    position: absolute;
+    top: 18mm;
+    width: 256mm;
+    text-align: center;
+    font-family: 'Apple SD Gothic Neo', sans-serif;
+    font-size: 5mm;
+    font-weight: 600;
+    color: white;
+    z-index: 20;
+  }
+
+  /* ===== 편지 페이지 ===== */
+  .letter-page-bg {
+    background: #FFFDF5;
+  }
+  .letter-frame {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 160mm;
+    padding: 15mm;
+    background: white;
+    border: 0.3mm solid #E8D5B7;
+    border-radius: 3mm;
+    z-index: 10;
+  }
+  .letter-text {
+    font-family: 'BookSerif', 'Noto Serif KR', serif;
+    font-size: 3.2mm;
+    line-height: 2.2;
+    color: #4E342E;
+    white-space: pre-line;
+    text-align: center;
+  }
+  .letter-deco {
+    position: absolute;
+    font-size: 8mm;
+    color: #E8D5B7;
+  }
+  .letter-date {
+    margin-top: 8mm;
+    font-family: 'BookSerif', serif;
+    font-size: 2.5mm;
+    color: #C8B07B;
+    text-align: center;
+  }
+  .letter-bookid {
+    position: absolute;
+    bottom: 8mm;
+    width: 256mm;
+    text-align: center;
+    font-family: 'Apple SD Gothic Neo', sans-serif;
+    font-size: 2mm;
+    color: #D5C4A1;
+    z-index: 20;
+  }
+
+  /* ===== 배경 테마 색상 (실제로는 JPG 일러스트) ===== */
+  .bg-castle   { background: linear-gradient(180deg, #1A237E 0%, #283593 40%, #3E4C8A 60%, #4A6741 80%, #2E7D32 100%); }
+  .bg-ocean    { background: linear-gradient(180deg, #006DD9 0%, #0288D1 30%, #00ACC1 60%, #26C6DA 100%); }
+  .bg-train    { background: linear-gradient(180deg, #87CEEB 0%, #B8D4E3 30%, #90C695 60%, #5D8A3C 100%); }
+  .bg-alien    { background: linear-gradient(180deg, #0D0D2B 0%, #1A1A4E 30%, #2D1B69 60%, #1A1A4E 100%); }
+  .bg-balloon  { background: linear-gradient(180deg, #64B5F6 0%, #90CAF9 30%, #BBDEFB 60%, #E3F2FD 100%); }
+  .bg-fishing  { background: linear-gradient(180deg, #FFB74D 0%, #FF9800 20%, #0288D1 50%, #01579B 100%); }
+  .bg-walk1    { background: linear-gradient(180deg, #FFF3E0 0%, #FFE0B2 30%, #A5D6A7 60%, #66BB6A 100%); }
+  .bg-walk2    { background: linear-gradient(180deg, #FCE4EC 0%, #F8BBD0 30%, #CE93D8 60%, #9575CD 100%); }
+  .bg-treasure { background: radial-gradient(circle at 50% 50%, #FFF8E1 0%, #FFD54F 30%, #FF8F00 60%, #4E342E 100%); }
+  .bg-ending   { background: linear-gradient(180deg, #FF7043 0%, #FF5722 30%, #E64A19 60%, #BF360C 100%); }
+  .bg-cover    { background: linear-gradient(135deg, #7B1FA2 0%, #9C27B0 30%, #CE93D8 60%, #F3E5F5 100%); }
+  .bg-toypet   { background: linear-gradient(180deg, #FFF8E1 0%, #FFECB3 50%, #FFE082 100%); }
+</style>
+</head>
+<body>
+
+<!-- ===== PAGE 1: 앞표지 (커버 프론트) ===== -->
+<div class="page page-cover" id="page-cover">
+  <div class="page-bg bg-cover"></div>
+  <div class="cover-title" id="cover-title"></div>
+  <div class="cover-subtitle">우리 집 보물찾기</div>
+  <img class="cover-photo" id="cover-photo" src="" alt="" />
+  <div class="cover-author" id="cover-author"></div>
+  <div class="bg-placeholder">HOME cover front — 실제: bg_Img_1_female.jpg</div>
+  <div class="trim-guide"></div>
+</div>
+
+<!-- ===== PAGE 2: 표제지 ===== -->
+<div class="page" id="page-title">
+  <div class="page-bg title-page-bg"></div>
+  <div class="title-page-name" id="title-name"></div>
+  <div class="title-page-bookname">우리 집 보물찾기</div>
+  <img class="title-page-photo" id="title-photo" src="" alt="" />
+  <div class="trim-guide"></div>
+</div>
+
+<!-- ===== PAGE 3: 성 페이지 (인트로) ===== -->
+<div class="page" id="page-castle">
+  <div class="page-bg bg-castle"></div>
+  <div class="intro-text" id="castle-text"></div>
+  <img class="child-photo" id="castle-photo" src="" alt=""
+       style="bottom:0; left:50%; transform:translateX(-50%); width:85mm; height:auto;" />
+  <div class="bg-placeholder">배경: 성 일러스트</div>
+  <div class="trim-guide"></div>
+</div>
+
+<!-- ===== PAGE 4: 뭉치(toyPet1) 소개 ===== -->
+<div class="page" id="page-toypet1">
+  <div class="page-bg bg-toypet"></div>
+  <div class="story-text-frame color-black" style="top:25mm;" id="toypet1-text"></div>
+  <img class="toy-pet-photo" id="toypet1-photo" src="" alt=""
+       style="top:50%; left:50%; transform:translate(-50%,-50%); width:70mm; height:70mm; border-radius:50%; border:2mm solid #FFB74D;" />
+  <div class="bg-placeholder" style="color:rgba(0,0,0,0.2);">배경: 뭉치 소개</div>
+  <div class="trim-guide"></div>
+</div>
+
+<!-- ===== PAGE 5: 바닷속 (아이 사진) ===== -->
+<div class="page" id="page-ocean">
+  <div class="page-bg bg-ocean"></div>
+  <img class="child-photo" id="ocean-photo" src="" alt=""
+       style="top:10%; right:30%; width:auto; height:130mm;" />
+  <div class="story-text-frame color-white" style="bottom:25mm; top:auto;">
+    물고기들이 반짝반짝 빛나는 바닷속,
+    <span id="ocean-name"></span>이는 신기한 것들을 구경했어요.
+  </div>
+  <div class="bg-placeholder">배경: 바닷속 일러스트</div>
+  <div class="trim-guide"></div>
+</div>
+
+<!-- ===== PAGE 6: 기차 (아이 사진) ===== -->
+<div class="page" id="page-train">
+  <div class="page-bg bg-train"></div>
+  <img class="child-photo" id="train-photo" src="" alt=""
+       style="top:70%; left:36%; width:22mm; height:auto; transform:translateY(-50%);" />
+  <div class="story-text-frame color-black" style="top:15mm;">
+    칙칙폭폭! 기차가 달려요.
+    <span id="train-name"></span>이도 기차를 타고 어디로 가는 걸까요?
+  </div>
+  <div class="bg-placeholder" style="color:rgba(0,0,0,0.2);">배경: 기차 일러스트</div>
+  <div class="trim-guide"></div>
+</div>
+
+<!-- ===== PAGE 7-8: 스토리 1 — ToyPet2 (ALIEN) ===== -->
+<div class="page" id="page-story1-0">
+  <div class="page-bg bg-alien"></div>
+  <img class="child-photo" id="story1-photo" src="" alt=""
+       style="bottom:15mm; left:50%; transform:translateX(-50%); width:60mm; height:auto;" />
+  <div class="story-text-frame color-white" id="story1-0-text"></div>
+  <div id="story1-0-balloon" style="display:none;"></div>
+  <div class="bg-placeholder">배경: ALIEN_SHORT_0.jpg</div>
+  <div class="trim-guide"></div>
+</div>
+
+<div class="page" id="page-story1-1">
+  <div class="page-bg bg-alien"></div>
+  <div class="story-text-frame color-white" id="story1-1-text"></div>
+  <div id="story1-1-balloon" style="display:none;"></div>
+  <div class="bg-placeholder">배경: ALIEN_SHORT_0.jpg (뒷면)</div>
+  <div class="trim-guide"></div>
+</div>
+
+<!-- ===== PAGE 9: 길 걷는 아이 1 ===== -->
+<div class="page" id="page-walk1">
+  <div class="page-bg bg-walk1"></div>
+  <img class="child-photo" id="walk1-photo" src="" alt=""
+       style="top:56%; left:30%; width:23mm; height:auto;" />
+  <div class="walk-text" id="walk1-text"></div>
+  <div class="bg-placeholder" style="color:rgba(0,0,0,0.2);">배경: 꽃길 일러스트</div>
+  <div class="trim-guide"></div>
+</div>
+
+<!-- ===== PAGE 10-11: 스토리 2 — ToyPet3 (BALLOON) ===== -->
+<div class="page" id="page-story2-0">
+  <div class="page-bg bg-balloon"></div>
+  <img class="child-photo" id="story2-photo" src="" alt=""
+       style="bottom:20mm; right:20mm; width:55mm; height:auto;" />
+  <div class="story-text-frame color-black" id="story2-0-text"></div>
+  <div id="story2-0-balloon" style="display:none;"></div>
+  <div class="bg-placeholder" style="color:rgba(0,0,0,0.15);">배경: BALLOON_SHORT_0.jpg</div>
+  <div class="trim-guide"></div>
+</div>
+
+<div class="page" id="page-story2-1">
+  <div class="page-bg bg-balloon"></div>
+  <div class="story-text-frame color-black" id="story2-1-text"></div>
+  <div id="story2-1-balloon" style="display:none;"></div>
+  <div class="bg-placeholder" style="color:rgba(0,0,0,0.15);">배경: BALLOON_SHORT_0.jpg (뒷면)</div>
+  <div class="trim-guide"></div>
+</div>
+
+<!-- ===== PAGE 12: 길 걷는 아이 2 ===== -->
+<div class="page" id="page-walk2">
+  <div class="page-bg bg-walk2"></div>
+  <img class="child-photo" id="walk2-photo" src="" alt=""
+       style="top:30%; left:30%; width:50mm; height:auto;" />
+  <div class="walk-text" id="walk2-text"></div>
+  <div class="bg-placeholder">배경: 보라빛 길 일러스트</div>
+  <div class="trim-guide"></div>
+</div>
+
+<!-- ===== PAGE 13-14: 스토리 3 — ToyPet4 (FISHING) ===== -->
+<div class="page" id="page-story3-0">
+  <div class="page-bg bg-fishing"></div>
+  <img class="child-photo" id="story3-photo" src="" alt=""
+       style="top:20mm; left:50%; transform:translateX(-50%); width:65mm; height:auto;" />
+  <div class="story-text-frame color-white" id="story3-0-text"></div>
+  <div id="story3-0-balloon" style="display:none;"></div>
+  <div class="bg-placeholder">배경: FISHING_SHORT_0.jpg</div>
+  <div class="trim-guide"></div>
+</div>
+
+<div class="page" id="page-story3-1">
+  <div class="page-bg bg-fishing"></div>
+  <div class="story-text-frame color-white" id="story3-1-text"></div>
+  <div id="story3-1-balloon" style="display:none;"></div>
+  <div class="bg-placeholder">배경: FISHING_SHORT_0.jpg (뒷면)</div>
+  <div class="trim-guide"></div>
+</div>
+
+<!-- ===== PAGE 15: ToyPet2 보물 힌트 ===== -->
+<div class="page" id="page-hint2">
+  <div class="page-bg bg-walk1"></div>
+  <div class="story-text-frame color-black" style="top:35%;" id="hint2-text"></div>
+  <div class="bg-placeholder" style="color:rgba(0,0,0,0.2);">배경: 보물 힌트 1</div>
+  <div class="trim-guide"></div>
+</div>
+
+<!-- ===== PAGE 16: ToyPet3 보물 힌트 ===== -->
+<div class="page" id="page-hint3">
+  <div class="page-bg bg-walk2"></div>
+  <div class="story-text-frame color-white" style="top:35%;" id="hint3-text"></div>
+  <div class="bg-placeholder">배경: 보물 힌트 2</div>
+  <div class="trim-guide"></div>
+</div>
+
+<!-- ===== PAGE 17: ToyPet4 보물 힌트 ===== -->
+<div class="page" id="page-hint4">
+  <div class="page-bg bg-toypet"></div>
+  <div class="story-text-frame color-black" style="top:35%;" id="hint4-text"></div>
+  <div class="bg-placeholder" style="color:rgba(0,0,0,0.2);">배경: 보물 힌트 3</div>
+  <div class="trim-guide"></div>
+</div>
+
+<!-- ===== PAGE 18: 우리 집 보물 (거울 페이지) ===== -->
+<div class="page" id="page-treasure">
+  <div class="page-bg bg-treasure"></div>
+  <div class="treasure-text">우리 집 보물은...</div>
+  <div class="treasure-mirror">
+    <img id="treasure-photo" src="" alt="" />
+  </div>
+  <div class="treasure-caption" id="treasure-caption"></div>
+  <div class="trim-guide"></div>
+</div>
+
+<!-- ===== PAGE 19: 엔딩 (4마리 인형) ===== -->
+<div class="page" id="page-ending">
+  <div class="page-bg bg-ending"></div>
+  <div class="ending-title" id="ending-title"></div>
+  <div class="ending-grid">
+    <div>
+      <div class="ending-pet"><img id="ending-pet1" src="" alt="" /></div>
+      <div class="ending-pet-name" id="ending-pet1-name"></div>
+    </div>
+    <div>
+      <div class="ending-pet"><img id="ending-pet2" src="" alt="" /></div>
+      <div class="ending-pet-name" id="ending-pet2-name"></div>
+    </div>
+    <div>
+      <div class="ending-pet"><img id="ending-pet3" src="" alt="" /></div>
+      <div class="ending-pet-name" id="ending-pet3-name"></div>
+    </div>
+    <div>
+      <div class="ending-pet"><img id="ending-pet4" src="" alt="" /></div>
+      <div class="ending-pet-name" id="ending-pet4-name"></div>
+    </div>
+  </div>
+  <div class="bg-placeholder">배경: 엔딩 일러스트</div>
+  <div class="trim-guide"></div>
+</div>
+
+<!-- ===== PAGE 20: 편지 ===== -->
+<div class="page" id="page-letter">
+  <div class="page-bg letter-page-bg"></div>
+  <div class="letter-deco" style="top:18mm; left:18mm;">&#10087;</div>
+  <div class="letter-deco" style="top:18mm; right:18mm; transform:scaleX(-1);">&#10087;</div>
+  <div class="letter-deco" style="bottom:18mm; left:18mm; transform:scaleY(-1);">&#10087;</div>
+  <div class="letter-deco" style="bottom:18mm; right:18mm; transform:scale(-1,-1);">&#10087;</div>
+  <div class="letter-frame">
+    <div class="letter-text" id="letter-text"></div>
+    <div class="letter-date" id="letter-date"></div>
+  </div>
+  <div class="letter-bookid" id="letter-bookid"></div>
+  <div class="trim-guide"></div>
+</div>
+
+</body>
+</html>

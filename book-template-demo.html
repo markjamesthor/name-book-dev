@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<style>
+  /* ===== 인쇄 규격 ===== */
+  /* Booktory 본문: trim 200×200mm, bleed: top 3mm, right 3mm, bottom 3mm, left 0mm (제본) */
+  /* 총 PDF 크기: 203mm × 206mm */
+
+  @page {
+    size: 203mm 206mm;
+    margin: 0;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    width: 203mm;
+    margin: 0;
+    font-family: 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .page {
+    width: 203mm;
+    height: 206mm;
+    position: relative;
+    overflow: hidden;
+    page-break-after: always;
+  }
+  .page:last-child {
+    page-break-after: auto;
+  }
+
+  /* ===== 영역 가이드 ===== */
+  /* bleed: 전체 203×206mm (배경이 여기까지 채워야 함) */
+  /* trim: left:0, top:3mm, 200×200mm (실제 재단선) */
+  /* safe: trim에서 안쪽 8mm (텍스트가 여기 안에) */
+
+  .bg-full {
+    position: absolute;
+    top: 0; left: 0;
+    width: 203mm;
+    height: 206mm;
+  }
+
+  .safe-area {
+    position: absolute;
+    left: 8mm;
+    top: 11mm;     /* 3mm bleed + 8mm margin */
+    width: 187mm;  /* 203 - 8 - 8 */
+    height: 184mm; /* 206 - 11 - 11 */
+  }
+
+  /* ===== 페이지 1: 일러스트 + 사진 ===== */
+  .page-illust .bg-full {
+    background: linear-gradient(180deg, #FFF5E6 0%, #FFE4C4 40%, #C8E6C9 100%);
+  }
+
+  .scene-ground {
+    position: absolute;
+    bottom: 0; left: 0;
+    width: 203mm;
+    height: 80mm;
+    background: linear-gradient(180deg, #81C784 0%, #66BB6A 100%);
+    border-radius: 50% 50% 0 0 / 20mm 20mm 0 0;
+  }
+
+  .scene-sun {
+    position: absolute;
+    top: 15mm;
+    right: 25mm;
+    width: 35mm;
+    height: 35mm;
+    background: radial-gradient(circle, #FFD54F 40%, #FFCA28 60%, transparent 70%);
+    border-radius: 50%;
+  }
+
+  .scene-cloud {
+    position: absolute;
+    background: white;
+    border-radius: 50mm;
+    opacity: 0.8;
+  }
+  .cloud-1 { top: 20mm; left: 15mm; width: 40mm; height: 14mm; }
+  .cloud-2 { top: 35mm; left: 80mm; width: 30mm; height: 10mm; }
+
+  .scene-tree {
+    position: absolute;
+    bottom: 62mm;
+    left: 20mm;
+  }
+  .tree-trunk {
+    width: 8mm;
+    height: 25mm;
+    background: #795548;
+    margin: 0 auto;
+    border-radius: 2mm;
+  }
+  .tree-leaves {
+    width: 35mm;
+    height: 30mm;
+    background: #4CAF50;
+    border-radius: 50%;
+    margin-bottom: -5mm;
+  }
+
+  .scene-tree-2 {
+    position: absolute;
+    bottom: 60mm;
+    right: 15mm;
+    transform: scale(0.7);
+  }
+
+  .photo-frame {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -45%);
+    width: 80mm;
+    height: 100mm;
+    border-radius: 6mm;
+    overflow: hidden;
+    border: 2mm solid white;
+    box-shadow: 0 2mm 8mm rgba(0,0,0,0.15);
+  }
+  .photo-frame img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .page-illust .page-title {
+    position: absolute;
+    bottom: 18mm;
+    left: 0;
+    width: 203mm;
+    text-align: center;
+    font-size: 7mm;
+    font-weight: 800;
+    color: #3E2723;
+    letter-spacing: 0.5mm;
+    text-shadow: 0 0.5mm 1mm rgba(255,255,255,0.8);
+  }
+
+  /* 작은 장식 요소 */
+  .deco-star {
+    position: absolute;
+    font-size: 6mm;
+  }
+  .star-1 { top: 25mm; left: 55mm; color: #FFD54F; font-size: 5mm; }
+  .star-2 { top: 50mm; right: 60mm; color: #FFB74D; font-size: 4mm; }
+  .star-3 { top: 15mm; left: 130mm; color: #FFF176; font-size: 6mm; }
+
+  .deco-butterfly {
+    position: absolute;
+    font-size: 7mm;
+    top: 70mm;
+    left: 35mm;
+  }
+
+  /* ===== 페이지 2: 스토리 텍스트 ===== */
+  .page-story .bg-full {
+    background: #FFFDF5;
+  }
+
+  .page-story .border-deco {
+    position: absolute;
+    top: 8mm; left: 5mm;
+    width: 193mm;
+    height: 190mm;
+    border: 0.3mm solid #E8D5B7;
+    border-radius: 4mm;
+  }
+
+  .page-story .corner-deco {
+    position: absolute;
+    font-size: 10mm;
+    color: #C8B07B;
+    line-height: 1;
+  }
+  .corner-tl { top: 12mm; left: 10mm; }
+  .corner-tr { top: 12mm; right: 10mm; transform: scaleX(-1); }
+  .corner-bl { bottom: 12mm; left: 10mm; transform: scaleY(-1); }
+  .corner-br { bottom: 12mm; right: 10mm; transform: scale(-1, -1); }
+
+  .story-content {
+    position: absolute;
+    top: 30mm;
+    left: 25mm;
+    width: 153mm;
+    height: 150mm;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+
+  .story-text {
+    font-size: 5.5mm;
+    line-height: 2.2;
+    color: #4E342E;
+    word-break: keep-all;
+    text-align: justify;
+  }
+
+  .story-page-num {
+    position: absolute;
+    bottom: 15mm;
+    width: 203mm;
+    text-align: center;
+    font-size: 3.5mm;
+    color: #C8B07B;
+    font-style: italic;
+  }
+
+  /* ===== 페이지 3: 사진 + 텍스트 조합 ===== */
+  .page-combo .bg-full {
+    background: linear-gradient(135deg, #E8F5E9 0%, #FFF8E1 100%);
+  }
+
+  .page-combo .photo-round {
+    position: absolute;
+    top: 20mm;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100mm;
+    height: 100mm;
+    border-radius: 50%;
+    overflow: hidden;
+    border: 2.5mm solid #FFCC80;
+    box-shadow: 0 2mm 10mm rgba(0,0,0,0.1);
+  }
+  .page-combo .photo-round img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .page-combo .combo-text {
+    position: absolute;
+    bottom: 30mm;
+    left: 25mm;
+    width: 153mm;
+    text-align: center;
+    font-size: 5mm;
+    line-height: 2;
+    color: #4E342E;
+    word-break: keep-all;
+  }
+
+  .page-combo .combo-title {
+    font-size: 6.5mm;
+    font-weight: 700;
+    color: #E65100;
+    margin-bottom: 5mm;
+    display: block;
+  }
+
+  /* 꽃 장식 */
+  .deco-flower {
+    position: absolute;
+    font-size: 8mm;
+  }
+  .flower-1 { bottom: 15mm; left: 15mm; font-size: 10mm; }
+  .flower-2 { bottom: 20mm; right: 20mm; font-size: 7mm; }
+  .flower-3 { top: 130mm; left: 12mm; font-size: 6mm; }
+  .flower-4 { top: 130mm; right: 15mm; font-size: 9mm; }
+
+  /* ===== 페이지 4: 엔딩 ===== */
+  .page-ending .bg-full {
+    background: linear-gradient(180deg, #1A237E 0%, #283593 30%, #3949AB 70%, #5C6BC0 100%);
+  }
+
+  .moon {
+    position: absolute;
+    top: 25mm;
+    right: 40mm;
+    width: 40mm;
+    height: 40mm;
+    background: radial-gradient(circle at 35% 35%, #FFF9C4 0%, #FFF176 50%, #FFD54F 100%);
+    border-radius: 50%;
+    box-shadow: 0 0 15mm 5mm rgba(255, 249, 196, 0.3);
+  }
+
+  .night-star {
+    position: absolute;
+    color: #FFF9C4;
+  }
+  .ns-1 { top: 20mm; left: 30mm; font-size: 3mm; }
+  .ns-2 { top: 15mm; left: 80mm; font-size: 2mm; opacity: 0.7; }
+  .ns-3 { top: 40mm; left: 50mm; font-size: 2.5mm; }
+  .ns-4 { top: 30mm; left: 140mm; font-size: 3mm; }
+  .ns-5 { top: 50mm; left: 160mm; font-size: 2mm; opacity: 0.6; }
+  .ns-6 { top: 10mm; left: 110mm; font-size: 2.5mm; }
+  .ns-7 { top: 55mm; left: 25mm; font-size: 2mm; opacity: 0.8; }
+
+  .ending-photo {
+    position: absolute;
+    top: 55mm;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 75mm;
+    height: 75mm;
+    border-radius: 50%;
+    overflow: hidden;
+    border: 2mm solid rgba(255,249,196,0.5);
+    box-shadow: 0 0 10mm rgba(255,249,196,0.2);
+  }
+  .ending-photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .ending-text {
+    position: absolute;
+    bottom: 40mm;
+    width: 203mm;
+    text-align: center;
+    color: #FFF9C4;
+    font-size: 7mm;
+    font-weight: 700;
+    letter-spacing: 1mm;
+  }
+
+  .ending-sub {
+    position: absolute;
+    bottom: 28mm;
+    width: 203mm;
+    text-align: center;
+    color: rgba(255,249,196,0.6);
+    font-size: 3.5mm;
+    letter-spacing: 0.5mm;
+  }
+
+  /* ===== trim guide (디버그용, 인쇄시 제거) ===== */
+  .trim-guide {
+    position: absolute;
+    top: 3mm; left: 0;
+    width: 200mm;
+    height: 200mm;
+    border: 0.1mm dashed rgba(255,0,0,0.25);
+    pointer-events: none;
+    z-index: 999;
+  }
+</style>
+</head>
+<body>
+
+<!-- ===== PAGE 1: 일러스트 + 사진 ===== -->
+<div class="page page-illust">
+  <div class="bg-full"></div>
+  <div class="scene-ground"></div>
+  <div class="scene-sun"></div>
+  <div class="scene-cloud cloud-1"></div>
+  <div class="scene-cloud cloud-2"></div>
+  <div class="scene-tree">
+    <div class="tree-leaves"></div>
+    <div class="tree-trunk"></div>
+  </div>
+  <div class="scene-tree scene-tree-2">
+    <div class="tree-leaves"></div>
+    <div class="tree-trunk"></div>
+  </div>
+  <div class="deco-star star-1">&#10022;</div>
+  <div class="deco-star star-2">&#10022;</div>
+  <div class="deco-star star-3">&#10022;</div>
+  <div class="deco-butterfly">&#127803;</div>
+
+  <div class="photo-frame">
+    <img id="photo1" src="" alt="아이 사진" />
+  </div>
+
+  <div class="page-title">{{NAME}}의 신나는 모험</div>
+  <div class="trim-guide"></div>
+</div>
+
+<!-- ===== PAGE 2: 스토리 텍스트 ===== -->
+<div class="page page-story">
+  <div class="bg-full"></div>
+  <div class="border-deco"></div>
+  <div class="corner-deco corner-tl">&#10087;</div>
+  <div class="corner-deco corner-tr">&#10087;</div>
+  <div class="corner-deco corner-bl">&#10087;</div>
+  <div class="corner-deco corner-br">&#10087;</div>
+
+  <div class="story-content">
+    <p class="story-text">
+      어느 화창한 봄날, {{NAME}}은 집 앞 작은 정원에서 반짝이는 무언가를 발견했어요.
+    </p>
+    <br/>
+    <p class="story-text">
+      "이게 뭐지?" {{NAME}}은 조심스럽게 손을 뻗었어요.
+      그것은 작고 동그란 유리구슬이었는데, 안에서 무지개빛이 반짝이고 있었어요.
+    </p>
+    <br/>
+    <p class="story-text">
+      유리구슬을 손에 쥐자 갑자기 따뜻한 바람이 불어오더니,
+      정원의 꽃들이 하나둘 피어나기 시작했어요.
+      나비들이 춤을 추고, 작은 새들이 노래를 불렀어요.
+    </p>
+    <br/>
+    <p class="story-text">
+      "와, 마법의 구슬이야!" {{NAME}}은 눈을 크게 뜨고 신기한 광경을 바라보았어요.
+    </p>
+  </div>
+
+  <div class="story-page-num">- 3 -</div>
+  <div class="trim-guide"></div>
+</div>
+
+<!-- ===== PAGE 3: 사진 + 텍스트 조합 ===== -->
+<div class="page page-combo">
+  <div class="bg-full"></div>
+  <div class="deco-flower flower-1">&#127800;</div>
+  <div class="deco-flower flower-2">&#127801;</div>
+  <div class="deco-flower flower-3">&#127802;</div>
+  <div class="deco-flower flower-4">&#127803;</div>
+
+  <div class="photo-round">
+    <img id="photo2" src="" alt="아이 사진" />
+  </div>
+
+  <div class="combo-text">
+    <span class="combo-title">용감한 탐험가 {{NAME}}</span>
+    {{NAME}}은 유리구슬을 들고 숲 속으로 모험을 떠났어요.<br/>
+    커다란 나무 사이를 지나고, 작은 시냇물을 건너고,<br/>
+    새로운 친구들을 만나며 즐거운 여행을 했어요.
+  </div>
+
+  <div class="story-page-num">- 5 -</div>
+  <div class="trim-guide"></div>
+</div>
+
+<!-- ===== PAGE 4: 엔딩 (밤하늘) ===== -->
+<div class="page page-ending">
+  <div class="bg-full"></div>
+  <div class="moon"></div>
+  <div class="night-star ns-1">&#10022;</div>
+  <div class="night-star ns-2">&#10022;</div>
+  <div class="night-star ns-3">&#10022;</div>
+  <div class="night-star ns-4">&#10022;</div>
+  <div class="night-star ns-5">&#10022;</div>
+  <div class="night-star ns-6">&#10022;</div>
+  <div class="night-star ns-7">&#10022;</div>
+
+  <div class="ending-photo">
+    <img id="photo3" src="" alt="아이 사진" />
+  </div>
+
+  <div class="ending-text">{{NAME}}의 모험은 계속돼요</div>
+  <div class="ending-sub">the adventure continues...</div>
+
+  <div class="trim-guide"></div>
+</div>
+
+</body>
+</html>

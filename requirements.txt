@@ -1,0 +1,22 @@
+# 몽비 테스트 - Python 의존성 패키지
+# 설치: pip install -r requirements.txt
+
+# 웹 서버
+fastapi>=0.100.0
+uvicorn>=0.23.0
+
+# AI/ML 프레임워크
+torch>=2.0.0
+torchvision>=0.15.0
+transformers>=4.30.0
+
+# 이미지 처리
+Pillow>=10.0.0
+opencv-python>=4.8.0
+numpy>=1.24.0
+
+# Hugging Face 모델 다운로드
+huggingface_hub>=0.16.0
+
+# HTTP 요청 (handler.py)
+requests>=2.31.0

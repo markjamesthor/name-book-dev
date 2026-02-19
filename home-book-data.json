@@ -1,0 +1,98 @@
+{
+  "order": {
+    "first_name": "하은",
+    "last_name": "김",
+    "gender": "female",
+    "family_type": "parents",
+    "sentence_type": "SHORT",
+    "toyPet1Name": "뭉치",
+    "toyPet2Name": "코코",
+    "toyPet2Call": "코코",
+    "toyPet2Story": "ALIEN",
+    "toyPet3Name": "루루",
+    "toyPet3Call": "루루",
+    "toyPet3Story": "BALLOON",
+    "toyPet4Name": "달이",
+    "toyPet4Call": "달이",
+    "toyPet4Story": "FISHING",
+    "letter": "우리 하은이에게\n\n세상에서 가장 사랑하는 우리 보물 하은아,\n네가 태어난 날은 엄마 아빠에게\n가장 행복한 날이었어.\n항상 건강하고 사랑 가득한 아이로 자라렴.\n\n사랑하는 엄마 아빠가",
+    "author": "엄마 아빠",
+    "print_date": "2026.02.17",
+    "book_id": "HOME-SAMPLE-001"
+  },
+  "genderText": {
+    "female": "공주님처럼 예쁘고 사랑스러운",
+    "male": "씩씩하고 멋진"
+  },
+  "familyText": {
+    "parents": {
+      "who": "엄마 아빠",
+      "parents": "엄마 아빠",
+      "parent": "엄마",
+      "other": "아빠",
+      "cabinet": "엄마 화장대",
+      "question": "\"여보. 우리 집 보물은 잘 있죠?\""
+    }
+  },
+  "storyText": {
+    "ALIEN": {
+      "SHORT": [
+        {
+          "text": "",
+          "toyPetSaid": "\"지구를 침략하라!\"",
+          "textTop": 0.45,
+          "color": "white",
+          "speechBalloon": { "left": 0.45, "top": 0.45 }
+        },
+        {
+          "text": "${firstName}이는 ${toyPetCall}와 함께 우주로 갔어요.\n\"안녕? 외계인 대장! 나는 ${firstName}이야.\"\n외계인들은 ${firstName}이가 너무 귀여워서\n깜짝 놀랐어요.\n\"우리도 지구에 가고 싶어!\"\n${firstName}이는 외계인들에게 손을 흔들고\n다시 집으로 돌아왔어요.",
+          "textTop": 0.2,
+          "color": "white",
+          "speechBalloon": null
+        }
+      ]
+    },
+    "BALLOON": {
+      "SHORT": [
+        {
+          "text": "",
+          "toyPetSaid": "\"휘~익~\"",
+          "textTop": 0,
+          "color": "black",
+          "speechBalloon": { "left": 0.3, "top": 0.15 }
+        },
+        {
+          "text": "${firstName}이가 밖을 보니\n${toyPetCall}가 풍선을 타고 하늘을 날고 있었어요!\n\"${toyPetCall}! 위험해!\"\n${firstName}이가 소리쳤지만\n${toyPetCall}는 신나서 웃기만 했어요.\n바람이 불어 풍선이 나무에 걸렸어요.\n${firstName}이가 달려가서 ${toyPetCall}를 구해줬어요.",
+          "toyPetSaid": "\"${firstName}아, 고마워!\"",
+          "textTop": 0.2,
+          "color": "black",
+          "speechBalloon": null
+        }
+      ]
+    },
+    "FISHING": {
+      "SHORT": [
+        {
+          "text": "${firstName}이는 ${toyPetCall}와 함께 낚시를 갔어요.\n\"오늘은 꼭 큰 물고기를 잡을 거야!\"\n${firstName}이가 낚싯대를 던졌어요.\n한참을 기다렸는데... 찌가 움직였어요!\n\"잡았다!\" 그런데 물고기가 아니라\n오래된 장화였어요.",
+          "textTop": 0.2,
+          "color": "white",
+          "speechBalloon": null
+        },
+        {
+          "text": "",
+          "toyPetSaid": "\"아기 상어 뚜루루~\"",
+          "textTop": 0,
+          "color": "white",
+          "speechBalloon": { "left": 0.1, "top": 0.65 }
+        }
+      ]
+    }
+  },
+  "storyEndText": {
+    "SHORT": {
+      "toyPet2": "\"${toyPetCall}! 우리 집 보물이 뭔지 알아?\"\n\"보물? 보물은 아주아주 소중한 걸 말하는 거야.\"\n\"우아! 고마워. ${toyPetCall}.\"",
+      "toyPet3": "\"${toyPetCall}! 우리 집 보물이 뭔지 알아?\"\n\"보물? 보물은 ${firstName}이의 눈동자처럼\n반짝반짝 빛나는 거야.\"\n\"우아! 고마워. ${toyPetCall}.\"",
+      "toyPet4": "\"${toyPetCall}! 우리 집 보물이 뭔지 알아?\n소중하고 반짝이는 거래.\"\n\"알겠다. ${cabinet}에 반짝이는 것이 있어.\n그게 우리 집 보물일 거야!\"\n\"우아! 고마워. ${toyPetCall}.\""
+    }
+  }
+}

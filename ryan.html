@@ -1,0 +1,1918 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>라이언북 - 맞춤형 동화책 생성기</title>
+    <!-- HEIC 변환 라이브러리 -->
+    <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+    <style>
+        :root {
+            --primary: #FF6B6B;
+            --secondary: #4ECDC4;
+            --accent: #FFE66D;
+            --dark: #2C3E50;
+            --light: #F7F9FC;
+            --success: #27AE60;
+            --warning: #F39C12;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--light);
+            color: var(--dark);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            text-align: center;
+            padding: 30px 0;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+            border-radius: 16px;
+            margin-bottom: 30px;
+        }
+
+        header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        header p {
+            opacity: 0.9;
+        }
+
+        .main-layout {
+            display: grid;
+            grid-template-columns: 400px 1fr;
+            gap: 30px;
+        }
+
+        /* 입력 패널 */
+        .input-panel {
+            background: white;
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            max-height: calc(100vh - 200px);
+            overflow-y: auto;
+        }
+
+        .section {
+            margin-bottom: 24px;
+            padding-bottom: 24px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .section:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+
+        .section h3 {
+            font-size: 1.1rem;
+            color: var(--dark);
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .section h3::before {
+            content: '';
+            width: 4px;
+            height: 20px;
+            background: var(--primary);
+            border-radius: 2px;
+        }
+
+        /* 입력 필드 */
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.9rem;
+            color: #666;
+            margin-bottom: 6px;
+        }
+
+        .form-group input[type="text"] {
+            width: 100%;
+            padding: 12px 16px;
+            border: 2px solid #E8E8E8;
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: border-color 0.2s;
+        }
+
+        .form-group input[type="text"]:focus {
+            outline: none;
+            border-color: var(--secondary);
+        }
+
+        /* 물건 입력 카드 */
+        .object-card {
+            background: #F8F9FA;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+
+        .object-card .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .object-card .card-header span {
+            font-weight: 600;
+            color: var(--primary);
+        }
+
+        .object-card .object-name {
+            margin-bottom: 12px;
+        }
+
+        /* 사진 업로드 */
+        .photo-upload {
+            border: 2px dashed #DDD;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .photo-upload:hover {
+            border-color: var(--secondary);
+            background: rgba(78, 205, 196, 0.05);
+        }
+
+        .photo-upload.dragover {
+            border-color: var(--primary);
+            background: rgba(255, 107, 107, 0.1);
+            transform: scale(1.02);
+        }
+
+        .photo-upload.has-image {
+            padding: 0;
+            border-style: solid;
+        }
+
+        .photo-upload img {
+            width: 100%;
+            height: 120px;
+            object-fit: cover;
+            border-radius: 8px;
+        }
+
+        .photo-upload .upload-text {
+            color: #999;
+            font-size: 0.9rem;
+        }
+
+        .photo-upload input[type="file"] {
+            display: none;
+        }
+
+        /* 가족 구성원 */
+        .family-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+
+        .family-member {
+            background: #F8F9FA;
+            border-radius: 10px;
+            padding: 12px;
+            text-align: center;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .family-member:hover {
+            background: #F0F0F0;
+        }
+
+        .family-member.selected {
+            border-color: var(--secondary);
+            background: rgba(78, 205, 196, 0.1);
+        }
+
+        .family-member .emoji {
+            font-size: 2rem;
+            margin-bottom: 4px;
+        }
+
+        .family-member .relation {
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .family-member .photo-slot {
+            margin-top: 8px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: #DDD;
+            margin: 8px auto 0;
+            overflow: hidden;
+        }
+
+        .family-member .photo-slot img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* 버튼 */
+        .btn {
+            padding: 14px 28px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+            width: 100%;
+        }
+
+        .btn-primary:hover {
+            background: #E55A5A;
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background: var(--secondary);
+            color: white;
+        }
+
+        /* 프리뷰 패널 */
+        .preview-panel {
+            background: white;
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        }
+
+        .preview-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .preview-header h2 {
+            font-size: 1.3rem;
+        }
+
+        .page-nav {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .page-nav button {
+            width: 36px;
+            height: 36px;
+            border: none;
+            background: #F0F0F0;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1.2rem;
+        }
+
+        .page-nav button:hover {
+            background: #E0E0E0;
+        }
+
+        .page-nav span {
+            font-size: 0.9rem;
+            color: #666;
+            min-width: 80px;
+            text-align: center;
+        }
+
+        /* 책 프리뷰 */
+        .book-preview {
+            background: #F8F9FA;
+            border-radius: 12px;
+            padding: 20px;
+            max-height: 450px;
+        }
+
+        .spread {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            height: 350px;
+            max-height: 350px;
+        }
+
+        .page {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+            max-height: 350px;
+        }
+
+        .page.left {
+            border-right: 1px solid #EEE;
+        }
+
+        .page-number {
+            position: absolute;
+            bottom: 10px;
+            font-size: 0.8rem;
+            color: #999;
+        }
+
+        .page-content {
+            text-align: center;
+            width: 100%;
+        }
+
+        .page-content .character-img {
+            width: 120px;
+            height: 120px;
+            background: #F0F0F0;
+            border-radius: 50%;
+            margin: 0 auto 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+        }
+
+        .page-content .dialogue {
+            font-size: 1.2rem;
+            line-height: 1.8;
+            color: var(--dark);
+        }
+
+        .page-content .child-name {
+            color: var(--primary);
+            font-weight: 700;
+        }
+
+        /* 페이지 썸네일 */
+        .thumbnails {
+            display: flex;
+            gap: 8px;
+            margin-top: 20px;
+            overflow-x: auto;
+            padding: 10px 0;
+        }
+
+        .thumbnail {
+            flex-shrink: 0;
+            width: 60px;
+            height: 84px;
+            background: white;
+            border: 2px solid #EEE;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            color: #999;
+        }
+
+        .thumbnail:hover {
+            border-color: var(--secondary);
+        }
+
+        .thumbnail.active {
+            border-color: var(--primary);
+            background: rgba(255, 107, 107, 0.1);
+        }
+
+        /* 스키마 정보 */
+        .schema-info {
+            margin-top: 20px;
+            padding: 16px;
+            background: #F8F9FA;
+            border-radius: 10px;
+            font-family: 'Monaco', monospace;
+            font-size: 0.75rem;
+            color: #666;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        /* 사물 호칭 옵션 */
+        .josa-options {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .josa-option {
+            display: flex;
+            align-items: center;
+            padding: 12px 16px;
+            background: #F8F9FA;
+            border: 2px solid transparent;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .josa-option:hover {
+            background: #F0F0F0;
+        }
+
+        .josa-option.selected {
+            border-color: var(--secondary);
+            background: rgba(78, 205, 196, 0.1);
+        }
+
+        .josa-option input[type="radio"] {
+            display: none;
+        }
+
+        .josa-option .option-content {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .josa-option .option-icon {
+            font-size: 1.2rem;
+            margin-bottom: 4px;
+        }
+
+        .josa-option .option-title {
+            font-weight: 600;
+            font-size: 0.95rem;
+            color: var(--dark);
+        }
+
+        .josa-option .option-example {
+            font-size: 0.8rem;
+            color: #888;
+            font-style: italic;
+        }
+
+        /* 물건별 호칭 토글 */
+        .josa-toggle {
+            display: flex;
+            gap: 6px;
+            margin-top: 10px;
+        }
+
+        .josa-btn {
+            flex: 1;
+            padding: 6px 10px;
+            border: 1px solid #DDD;
+            background: #F8F9FA;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .josa-btn:hover {
+            background: #F0F0F0;
+        }
+
+        .josa-btn.active {
+            background: var(--secondary);
+            color: white;
+            border-color: var(--secondary);
+        }
+
+        .josa-preview {
+            margin-top: 8px;
+            padding: 8px 12px;
+            background: #FFF9E6;
+            border-left: 3px solid var(--accent);
+            border-radius: 4px;
+            font-size: 0.8rem;
+            color: #666;
+            font-style: italic;
+        }
+
+        /* Ryan 스타일 폼 레이아웃 */
+        .form-row {
+            display: flex;
+            gap: 12px;
+        }
+
+        .form-group.half {
+            flex: 1;
+        }
+
+        .gender-toggle {
+            display: flex;
+            gap: 8px;
+        }
+
+        .gender-btn {
+            flex: 1;
+            padding: 10px;
+            border: 2px solid #E8E8E8;
+            background: white;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .gender-btn:hover {
+            border-color: var(--secondary);
+        }
+
+        .gender-btn.active {
+            border-color: var(--primary);
+            background: rgba(255, 107, 107, 0.1);
+        }
+
+        /* 조사 데모 패널 */
+        .josa-demo-section {
+            background: linear-gradient(135deg, #FFF9E6 0%, #FFF5F5 100%);
+            border-radius: 12px;
+            padding: 16px !important;
+        }
+
+        .josa-demo {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .josa-demo-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: white;
+            border-radius: 8px;
+            font-size: 0.85rem;
+        }
+
+        .josa-demo-item .label {
+            min-width: 80px;
+            font-weight: 600;
+            color: var(--dark);
+            font-size: 0.75rem;
+        }
+
+        .josa-demo-item .example {
+            color: #666;
+            flex: 1;
+        }
+
+        .josa-demo-item .example .highlight {
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        .josa-demo-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px dashed #DDD;
+        }
+
+        .josa-demo-header .name-display {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .josa-demo-header .batchim-badge {
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .josa-demo-header .batchim-badge.has {
+            background: #E8F5E9;
+            color: #2E7D32;
+        }
+
+        .josa-demo-header .batchim-badge.no {
+            background: #FFF3E0;
+            color: #E65100;
+        }
+
+        /* 토스트 */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            padding: 16px 24px;
+            background: var(--dark);
+            color: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.3s;
+        }
+
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>라이언북 프로토타입</h1>
+            <p>Chain Reaction 동화책 자동 생성 시스템 v0.1</p>
+        </header>
+
+        <div class="main-layout">
+            <!-- 입력 패널 -->
+            <div class="input-panel">
+                <!-- 기본 정보 (Ryan Style) -->
+                <div class="section">
+                    <h3>기본 정보</h3>
+                    <div class="form-row">
+                        <div class="form-group half">
+                            <label>성</label>
+                            <input type="text" id="childLastName" placeholder="예: 김" value="김">
+                        </div>
+                        <div class="form-group half">
+                            <label>이름</label>
+                            <input type="text" id="childFirstName" placeholder="예: 도현" value="도현" oninput="updateChildName()">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group half">
+                            <label>성별</label>
+                            <div class="gender-toggle">
+                                <button class="gender-btn active" data-gender="boy" onclick="setGender('boy')">👦 남아</button>
+                                <button class="gender-btn" data-gender="girl" onclick="setGender('girl')">👧 여아</button>
+                            </div>
+                        </div>
+                        <div class="form-group half">
+                            <label>생일</label>
+                            <input type="date" id="childBirthday" value="2020-01-01">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>아이 사진</label>
+                        <div class="photo-upload has-image" id="childPhotoUpload" onclick="document.getElementById('childPhoto').click()">
+                            <input type="file" id="childPhoto" accept="image/*">
+                            <img src="ryan_test_images/0_도현.JPG" alt="아이 사진">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 조사 미리보기 데모 -->
+                <div class="section josa-demo-section">
+                    <h3>📝 조사 미리보기</h3>
+                    <div class="josa-demo" id="josaDemoPanel">
+                        <!-- 동적으로 생성됨 -->
+                    </div>
+                </div>
+
+                <!-- 좋아하는 물건들 -->
+                <div class="section">
+                    <h3>좋아하는 것들 (Favorites)</h3>
+                    <p style="font-size: 0.85rem; color: #888; margin-bottom: 12px;">아이가 좋아하는 사물/친구 이름 (최대 4개)</p>
+                    <div id="objectsContainer">
+                        <!-- 동적으로 생성됨 -->
+                    </div>
+                </div>
+
+                <!-- 가족 구성원 -->
+                <div class="section">
+                    <h3>가족 구성원</h3>
+                    <p style="font-size: 0.85rem; color: #888; margin-bottom: 12px;">등장할 가족을 선택하고 호칭을 입력하세요</p>
+                    <div class="family-grid" id="familyGrid">
+                        <!-- 동적으로 생성됨 -->
+                    </div>
+                </div>
+
+                <!-- 생성 버튼 -->
+                <button class="btn btn-primary" onclick="generateBook()">
+                    동화책 생성하기
+                </button>
+            </div>
+
+            <!-- 프리뷰 패널 -->
+            <div class="preview-panel">
+                <div class="preview-header">
+                    <h2>책 미리보기</h2>
+                    <div class="page-nav">
+                        <button onclick="prevSpread()">&#8249;</button>
+                        <span id="pageIndicator">1-2 / 24</span>
+                        <button onclick="nextSpread()">&#8250;</button>
+                    </div>
+                </div>
+
+                <div class="book-preview">
+                    <div class="spread" id="bookSpread">
+                        <div class="page left" id="leftPage">
+                            <div class="page-content">
+                                <p style="color: #999;">왼쪽 페이지</p>
+                            </div>
+                            <span class="page-number">1</span>
+                        </div>
+                        <div class="page right" id="rightPage">
+                            <div class="page-content">
+                                <p style="color: #999;">오른쪽 페이지</p>
+                            </div>
+                            <span class="page-number">2</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 페이지 썸네일 -->
+                <div class="thumbnails" id="thumbnails">
+                    <!-- 동적으로 생성됨 -->
+                </div>
+
+                <!-- 스키마 정보 -->
+                <div class="schema-info" id="schemaInfo">
+                    // Master Schema가 여기에 표시됩니다
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+        // ============================================
+        // Master Schema - 테마 설정
+        // ============================================
+        const THEME_CONFIG = {
+            themeId: "ryan_default",
+            themeName: "나니노뇨 토끼",
+
+            // Chain Characters - 연쇄반응 캐릭터들
+            chainCharacters: [
+                { id: "char1", name: "나니노뇨 토끼", emoji: "🐰", defaultImg: null },
+                { id: "char2", name: "타요", emoji: "🚌", defaultImg: null },
+                { id: "char3", name: "투닙", emoji: "🥕", defaultImg: null },
+                { id: "char4", name: "페소", emoji: "🐧", defaultImg: null }
+            ],
+
+            // 텍스트 템플릿
+            texts: {
+                title: "나는 {objectName}를 좋아해",
+                question: "{actorName},\n너는 뭘 좋아해?",
+                answer: "나는 {targetName}를 좋아해.",
+                climax: "그럼 {targetName}는\n뭘 제일 좋아하냐면...",
+                childReveal: "바로 {childName}!",
+                familyLove: "우리도 {childName} 좋아해!",
+                childLoveBack: "나도 {relations} 좋아해!",
+                secret: "비밀인데...\n{childName}가 제일 좋아하는 건\n바로 너야!"
+            },
+
+            // 페이지 구조 정의 (24페이지)
+            pageStructure: [
+                { page: 1, type: "title", template: "title" },
+                { page: 2, type: "intro", template: "child_intro" },
+                { page: 3, type: "chain_question", chainIndex: 0 },
+                { page: 4, type: "chain_answer", chainIndex: 0 },
+                { page: 5, type: "chain_question", chainIndex: 1 },
+                { page: 6, type: "chain_answer", chainIndex: 1 },
+                { page: 7, type: "chain_question", chainIndex: 2 },
+                { page: 8, type: "chain_answer", chainIndex: 2 },
+                { page: 9, type: "chain_question", chainIndex: 3 },
+                { page: 10, type: "chain_answer", chainIndex: 3 },
+                { page: 11, type: "climax_question" },
+                { page: 12, type: "climax_heart" },
+                { page: 13, type: "child_reveal" },
+                { page: 14, type: "all_together" },
+                { page: 15, type: "family_intro" },
+                { page: 16, type: "family_grid" },
+                { page: 17, type: "family_grid_2" },
+                { page: 18, type: "child_loves_family" },
+                { page: 19, type: "child_loves_family_2" },
+                { page: 20, type: "who_best" },
+                { page: 21, type: "secret" },
+                { page: 22, type: "character_intro" },
+                { page: 23, type: "character_intro_2" },
+                { page: 24, type: "credits" }
+            ]
+        };
+
+        // ============================================
+        // 한글 조사 처리 유틸리티 (Ryan Book Style)
+        // ============================================
+
+        // 받침(종성) 확인
+        function hasJongseong(char) {
+            const code = char.charCodeAt(0);
+            if (code < 0xAC00 || code > 0xD7A3) return false;
+            return (code - 0xAC00) % 28 !== 0;
+        }
+
+        // 마지막 글자 가져오기
+        function getLastChar(str) {
+            if (!str || str.length === 0) return '';
+            return str.charAt(str.length - 1);
+        }
+
+        // 받침 여부 확인 (단어 전체)
+        function hasBatchim(word) {
+            return hasJongseong(getLastChar(word));
+        }
+
+        // ============================================
+        // Ryan Book 정교한 조사 처리 시스템
+        // ============================================
+        // 9가지 조사 쌍을 지원하는 완전한 조사 처리
+        const JOSA_PAIRS = {
+            // 주격 (이/가)
+            'subjective': { withBatchim: '이', withoutBatchim: '가' },
+            'i_ga': { withBatchim: '이', withoutBatchim: '가' },
+
+            // 목적격 (을/를)
+            'objective': { withBatchim: '을', withoutBatchim: '를' },
+            'eul_reul': { withBatchim: '을', withoutBatchim: '를' },
+
+            // 주격 강조 (이는/는) - "곰이는 사과는"
+            'topic': { withBatchim: '이는', withoutBatchim: '는' },
+            'i_neun': { withBatchim: '이는', withoutBatchim: '는' },
+
+            // 목적격 강조 (이를/를) - ★ Ryan책 핵심: "곰이를 좋아해"
+            'objective_emphasis': { withBatchim: '이를', withoutBatchim: '를' },
+            'i_reul': { withBatchim: '이를', withoutBatchim: '를' },
+
+            // 소유격 (이의/의)
+            'possessive': { withBatchim: '이의', withoutBatchim: '의' },
+            'i_eui': { withBatchim: '이의', withoutBatchim: '의' },
+
+            // 호칭 (아/야)
+            'vocative': { withBatchim: '아', withoutBatchim: '야' },
+            'a_ya': { withBatchim: '아', withoutBatchim: '야' },
+
+            // 서술격 존댓말 (이에요/예요)
+            'copula_polite': { withBatchim: '이에요', withoutBatchim: '예요' },
+            'ieyo_yeyo': { withBatchim: '이에요', withoutBatchim: '예요' },
+
+            // 서술격 반말 (이야/야)
+            'copula_casual': { withBatchim: '이야', withoutBatchim: '야' },
+            'iya_ya': { withBatchim: '이야', withoutBatchim: '야' },
+
+            // 공동격 (이네/네) - "곰이네 집"
+            'collective': { withBatchim: '이네', withoutBatchim: '네' },
+            'i_ne': { withBatchim: '이네', withoutBatchim: '네' },
+
+            // 기존 호환성 유지
+            '을를': { withBatchim: '을', withoutBatchim: '를' },
+            '를': { withBatchim: '을', withoutBatchim: '를' },
+            '이가': { withBatchim: '이', withoutBatchim: '가' },
+            '가': { withBatchim: '이', withoutBatchim: '가' },
+            '은는': { withBatchim: '은', withoutBatchim: '는' },
+            '는': { withBatchim: '은', withoutBatchim: '는' },
+            '과와': { withBatchim: '과', withoutBatchim: '와' },
+            '와': { withBatchim: '과', withoutBatchim: '와' },
+            '아야': { withBatchim: '아', withoutBatchim: '야' },
+            '야': { withBatchim: '아', withoutBatchim: '야' },
+            '이': { withBatchim: '이', withoutBatchim: '' }
+        };
+
+        // 조사 가져오기
+        function getJosa(word, type) {
+            const pair = JOSA_PAIRS[type];
+            if (!pair) return '';
+            return hasBatchim(word) ? pair.withBatchim : pair.withoutBatchim;
+        }
+
+        // 기존 josa 함수 (호환성 유지)
+        function josa(word, type) {
+            return getJosa(word, type);
+        }
+
+        // 단어 + 조사 결합
+        function withJosa(word, type) {
+            return word + getJosa(word, type);
+        }
+
+        // ============================================
+        // Ryan Book 조사 데모 생성기
+        // ============================================
+        function generateJosaDemo(name) {
+            return {
+                name: name,
+                hasBatchim: hasBatchim(name),
+                examples: {
+                    subjective: `${name}${getJosa(name, 'subjective')} 좋아!`,           // 이/가
+                    objective: `${name}${getJosa(name, 'objective')} 좋아해`,            // 을/를
+                    topic: `${name}${getJosa(name, 'topic')} 뭘 좋아해?`,                // 이는/는
+                    objective_emphasis: `${name}${getJosa(name, 'objective_emphasis')} 좋아해`, // 이를/를 ★
+                    possessive: `${name}${getJosa(name, 'possessive')} 사진`,            // 이의/의
+                    vocative: `${name}${getJosa(name, 'vocative')}, 안녕!`,              // 아/야
+                    copula_polite: `이건 ${name}${getJosa(name, 'copula_polite')}`,      // 이에요/예요
+                    copula_casual: `이건 ${name}${getJosa(name, 'copula_casual')}`,      // 이야/야
+                    collective: `${name}${getJosa(name, 'collective')} 집`               // 이네/네
+                }
+            };
+        }
+
+        // ============================================
+        // 사물 호칭 처리 (의인화 옵션)
+        // ============================================
+
+        // 사물 이름을 의인화 형태로 변환 (받침 있으면 -이 추가)
+        // 예: 로봇 -> 로봇이, 곰 -> 곰이, 토끼 -> 토끼 (받침 없으면 그대로)
+        function personifyObject(name) {
+            const lastChar = getLastChar(name);
+            if (hasJongseong(lastChar)) {
+                return name + '이';
+            }
+            return name;
+        }
+
+        // 사물에 조사 붙이기 (옵션에 따라 의인화 처리)
+        // mode: 'friend' (의인화) 또는 'object' (사물)
+        function objectWithJosa(name, type, mode = 'friend') {
+            if (mode === 'friend') {
+                // 의인화 모드: 받침 있는 이름은 -이를 붙여서 처리
+                const personified = personifyObject(name);
+                return personified + josa(personified, type);
+            } else {
+                // 사물 모드: 그대로 조사 붙이기
+                return name + josa(name, type);
+            }
+        }
+
+        // 사물 호칭 (부르는 말) - 의인화면 아/야, 사물이면 생략
+        // 예: friend 모드 -> "로봇아," / "토끼야,"
+        // 예: object 모드 -> "로봇," / "토끼,"
+        function objectVocative(name, mode = 'friend') {
+            if (mode === 'friend') {
+                // 의인화: 받침 있으면 "로봇아", 없으면 "토끼야"
+                const personified = personifyObject(name);
+                return personified + josa(personified, '야');
+            } else {
+                // 사물: 그냥 이름만
+                return name;
+            }
+        }
+
+        // ============================================
+        // 서버 설정
+        // ============================================
+        const SERVER_CONFIG = {
+            MAIN_URL: 'http://localhost:5001',      // 배경 제거 서버 (로컬)
+            BACKUP_URL: 'http://172.30.1.51:5000',  // 백업 서버 (Windows/RTX)
+            TIMEOUT: 30000
+        };
+
+        // ============================================
+        // 테스트 이미지 경로
+        // ============================================
+        const TEST_IMAGES_PATH = 'ryan_test_images/';
+        const TEST_DATA = {
+            childName: "도현",
+            childPhoto: TEST_IMAGES_PATH + '0_도현.JPG',
+            objects: [
+                { name: "토끼", photo: TEST_IMAGES_PATH + '1_토끼.jpeg', emoji: "🐰", josaMode: "friend" },
+                { name: "토마토", photo: TEST_IMAGES_PATH + '2_토마토.jpeg', emoji: "🍅", josaMode: "object" },
+                { name: "사과가 쿵", photo: TEST_IMAGES_PATH + '3_사과가 쿵.jpeg', emoji: "🍎", josaMode: "object" },
+                { name: "엄마 아이폰", photo: TEST_IMAGES_PATH + '4_엄마 아이폰.jpeg', emoji: "📱", josaMode: "object" }
+            ]
+        };
+
+        // ============================================
+        // 상태 관리
+        // ============================================
+        const state = {
+            // 기본 정보
+            childLastName: "김",
+            childFirstName: "도현",
+            childName: "도현",  // 책에 사용되는 이름 (이름만)
+            childFullName: "김도현",  // 전체 이름
+            gender: "boy",
+            birthday: "2020-01-01",
+            childPhoto: TEST_DATA.childPhoto,
+            // 좋아하는 것들
+            objects: TEST_DATA.objects.map(obj => ({ ...obj, josaMode: obj.josaMode || 'friend' })),
+            // 가족
+            familyMembers: [],
+            // 책 상태
+            currentSpread: 0,
+            generatedBook: null
+        };
+
+        // 가족 구성원 옵션
+        const FAMILY_OPTIONS = [
+            { id: "dad", relation: "아빠", emoji: "👨" },
+            { id: "mom", relation: "엄마", emoji: "👩" },
+            { id: "grandpa", relation: "할아버지", emoji: "👴" },
+            { id: "grandma", relation: "할머니", emoji: "👵" },
+            { id: "uncle", relation: "삼촌", emoji: "👨‍🦱" },
+            { id: "aunt", relation: "이모", emoji: "👩‍🦱" },
+            { id: "brother", relation: "형/오빠", emoji: "👦" },
+            { id: "sister", relation: "언니/누나", emoji: "👧" }
+        ];
+
+        // ============================================
+        // 초기화
+        // ============================================
+        function init() {
+            renderObjectInputs();
+            renderFamilyGrid();
+            renderThumbnails();
+            renderJosaDemo();
+
+            // 이벤트 리스너 - 이름 입력
+            document.getElementById('childFirstName').addEventListener('input', (e) => {
+                updateChildName();
+            });
+
+            document.getElementById('childLastName').addEventListener('input', (e) => {
+                updateChildName();
+            });
+
+            document.getElementById('childPhoto').addEventListener('change', (e) => {
+                handlePhotoUpload(e, 'child');
+            });
+
+            // 아이 사진 드래그 앤 드롭 설정
+            setupDropZone(document.getElementById('childPhotoUpload'), 'child');
+        }
+
+        // ============================================
+        // 이름 업데이트 및 조사 데모
+        // ============================================
+        function updateChildName() {
+            const firstName = document.getElementById('childFirstName').value || '';
+            const lastName = document.getElementById('childLastName').value || '';
+            state.childFirstName = firstName;
+            state.childLastName = lastName;
+            state.childName = firstName;  // 책에는 이름만 사용
+            state.childFullName = lastName + firstName;
+            renderJosaDemo();
+        }
+
+        function setGender(gender) {
+            state.gender = gender;
+            document.querySelectorAll('.gender-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.gender === gender);
+            });
+        }
+
+        // 조사 데모 렌더링
+        function renderJosaDemo() {
+            const panel = document.getElementById('josaDemoPanel');
+            const name = state.childName || '이름';
+            const demo = generateJosaDemo(name);
+
+            const josaPairs = [
+                { key: 'subjective', label: '주격 (이/가)', desc: '~이/가 좋아!' },
+                { key: 'objective', label: '목적격 (을/를)', desc: '~을/를 좋아해' },
+                { key: 'topic', label: '주제 (이는/는)', desc: '~이는/는 뭘 좋아해?' },
+                { key: 'objective_emphasis', label: '★ 강조 (이를/를)', desc: '~이를/를 좋아해' },
+                { key: 'vocative', label: '호칭 (아/야)', desc: '~아/야, 안녕!' },
+                { key: 'copula_polite', label: '서술 (이에요/예요)', desc: '이건 ~이에요/예요' },
+                { key: 'copula_casual', label: '반말 (이야/야)', desc: '이건 ~이야/야' },
+                { key: 'collective', label: '공동 (이네/네)', desc: '~이네/네 집' }
+            ];
+
+            panel.innerHTML = `
+                <div class="josa-demo-header">
+                    <span class="name-display">${name}</span>
+                    <span class="batchim-badge ${demo.hasBatchim ? 'has' : 'no'}">
+                        ${demo.hasBatchim ? '✓ 받침 있음' : '✗ 받침 없음'}
+                    </span>
+                </div>
+                ${josaPairs.map(pair => `
+                    <div class="josa-demo-item">
+                        <span class="label">${pair.label}</span>
+                        <span class="example">
+                            <span class="highlight">${demo.examples[pair.key]}</span>
+                        </span>
+                    </div>
+                `).join('')}
+            `;
+        }
+
+        // ============================================
+        // 드래그 앤 드롭
+        // ============================================
+        function setupDropZone(element, type, index = null) {
+            if (!element) return;
+
+            element.addEventListener('dragenter', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                element.classList.add('dragover');
+            });
+
+            element.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                element.classList.add('dragover');
+            });
+
+            element.addEventListener('dragleave', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                element.classList.remove('dragover');
+            });
+
+            element.addEventListener('drop', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                element.classList.remove('dragover');
+
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    const file = files[0];
+                    // HEIC 파일이거나 일반 이미지 파일 처리
+                    if (file.type.startsWith('image/') || isHeicFile(file)) {
+                        handleDroppedFile(file, type, index);
+                    }
+                }
+            });
+        }
+
+        // HEIC 파일 확인
+        function isHeicFile(file) {
+            const name = file.name.toLowerCase();
+            return name.endsWith('.heic') || name.endsWith('.heif');
+        }
+
+        // HEIC를 JPEG로 변환
+        async function convertHeicToJpeg(file) {
+            if (!isHeicFile(file)) return file;
+
+            try {
+                showToast('HEIC 변환 중...');
+                const blob = await heic2any({
+                    blob: file,
+                    toType: 'image/jpeg',
+                    quality: 0.9
+                });
+                return new File([blob], file.name.replace(/\.heic$/i, '.jpg'), { type: 'image/jpeg' });
+            } catch (error) {
+                console.error('HEIC 변환 실패:', error);
+                showToast('HEIC 변환 실패. 다른 형식을 시도하세요.');
+                return null;
+            }
+        }
+
+        // ============================================
+        // 배경 제거 API
+        // ============================================
+        async function removeBackground(imageSource) {
+            // imageSource가 URL 경로인 경우 fetch로 가져오기
+            let file;
+            if (typeof imageSource === 'string') {
+                try {
+                    const response = await fetch(imageSource);
+                    const blob = await response.blob();
+                    const filename = imageSource.split('/').pop();
+                    file = new File([blob], filename, { type: blob.type });
+                } catch (error) {
+                    console.error('이미지 로드 실패:', error);
+                    throw new Error('이미지를 불러올 수 없습니다.');
+                }
+            } else {
+                file = imageSource;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            // 메인 서버 시도
+            try {
+                const response = await fetch(`${SERVER_CONFIG.MAIN_URL}/remove-bg?max_size=1440&model=portrait`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    return URL.createObjectURL(blob);
+                }
+            } catch (e) {
+                console.log('메인 서버 실패, 백업 서버 시도...');
+            }
+
+            // 백업 서버 시도
+            try {
+                const response = await fetch(`${SERVER_CONFIG.BACKUP_URL}/remove-bg?max_size=1440&model=portrait`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    return URL.createObjectURL(blob);
+                }
+            } catch (e) {
+                console.error('백업 서버도 실패:', e);
+            }
+
+            throw new Error('배경 제거 서버에 연결할 수 없습니다.');
+        }
+
+        // 모든 사진 배경 제거 처리 (기존 버전 - 미사용)
+        async function processAllPhotosForBackgroundRemoval() {
+            await processAllPhotosWithLiveUpdate();
+        }
+
+        // 배경 제거하면서 실시간으로 책 업데이트
+        async function processAllPhotosWithLiveUpdate() {
+            const total = 1 + state.objects.length; // 아이 사진 + 물건들
+            let processed = 0;
+
+            try {
+                // 아이 사진 배경 제거
+                if (state.childPhoto) {
+                    showToast(`아이 사진 배경 제거 중... (${processed}/${total})`);
+                    try {
+                        const result = await removeBackground(state.childPhoto);
+                        state.childPhotoNoBg = result;
+                        processed++;
+                        // 실시간 업데이트!
+                        updateBookPreview();
+                        showToast(`아이 사진 완료! (${processed}/${total})`);
+                    } catch (e) {
+                        console.error('아이 사진 배경 제거 실패:', e);
+                        state.childPhotoNoBg = state.childPhoto;
+                        processed++;
+                    }
+                }
+
+                // 물건 사진들 배경 제거 - 순차 처리하며 실시간 업데이트
+                for (let i = 0; i < state.objects.length; i++) {
+                    const obj = state.objects[i];
+                    if (obj.photo) {
+                        showToast(`${obj.name} 배경 제거 중... (${processed}/${total})`);
+                        try {
+                            const result = await removeBackground(obj.photo);
+                            obj.photoNoBg = result;
+                            processed++;
+                            // 실시간 업데이트!
+                            updateBookPreview();
+                            showToast(`${obj.name} 완료! (${processed}/${total})`);
+                        } catch (e) {
+                            console.error(`물건 ${i + 1} 배경 제거 실패:`, e);
+                            obj.photoNoBg = obj.photo;
+                            processed++;
+                        }
+                    } else {
+                        processed++;
+                    }
+                }
+
+                return true;
+            } catch (error) {
+                console.error('배경 제거 처리 오류:', error);
+                showToast('배경 제거 실패. 원본 사진으로 진행합니다.');
+                return false;
+            }
+        }
+
+        async function handleDroppedFile(file, type, index) {
+            // HEIC 파일이면 변환
+            let processedFile = file;
+            if (isHeicFile(file)) {
+                processedFile = await convertHeicToJpeg(file);
+                if (!processedFile) return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                if (type === 'child') {
+                    state.childPhoto = e.target.result;
+                    updateChildPhotoUI(e.target.result);
+                } else if (type === 'object' && index !== null) {
+                    state.objects[index].photo = e.target.result;
+                    renderObjectInputs();
+                } else if (type === 'family' && index !== null) {
+                    const member = state.familyMembers.find(m => m.id === index);
+                    if (member) {
+                        member.photo = e.target.result;
+                        renderFamilyGrid();
+                    }
+                }
+            };
+            reader.readAsDataURL(processedFile);
+        }
+
+        function updateChildPhotoUI(dataUrl) {
+            const uploadDiv = document.getElementById('childPhotoUpload');
+            uploadDiv.classList.add('has-image');
+            uploadDiv.innerHTML = `
+                <input type="file" id="childPhoto" accept="image/*">
+                <img src="${dataUrl}" alt="아이 사진">
+            `;
+            document.getElementById('childPhoto').addEventListener('change', (e) => {
+                handlePhotoUpload(e, 'child');
+            });
+            setupDropZone(uploadDiv, 'child');
+        }
+
+        // ============================================
+        // UI 렌더링
+        // ============================================
+        function renderObjectInputs() {
+            const container = document.getElementById('objectsContainer');
+            container.innerHTML = state.objects.map((obj, idx) => `
+                <div class="object-card">
+                    <div class="card-header">
+                        <span>물건 ${idx + 1}</span>
+                        <span>${obj.emoji}</span>
+                    </div>
+                    <div class="form-group object-name">
+                        <input type="text"
+                               placeholder="물건 이름"
+                               value="${obj.name}"
+                               onchange="updateObjectName(${idx}, this.value)">
+                    </div>
+                    <div class="photo-upload ${obj.photo ? 'has-image' : ''}"
+                         data-type="object" data-index="${idx}"
+                         onclick="document.getElementById('objectPhoto${idx}').click()">
+                        <input type="file" id="objectPhoto${idx}" accept="image/*"
+                               onchange="handleObjectPhoto(${idx}, event)">
+                        ${obj.photo
+                            ? `<img src="${obj.photo}" alt="${obj.name}">`
+                            : '<span class="upload-text">사진을 드래그하거나 클릭</span>'}
+                    </div>
+                    <div class="josa-toggle">
+                        <button class="josa-btn ${obj.josaMode === 'friend' ? 'active' : ''}"
+                                onclick="updateObjectJosaMode(${idx}, 'friend')" title="친구처럼 부르기">
+                            🧸 친구
+                        </button>
+                        <button class="josa-btn ${obj.josaMode === 'object' ? 'active' : ''}"
+                                onclick="updateObjectJosaMode(${idx}, 'object')" title="사물처럼 부르기">
+                            📦 사물
+                        </button>
+                    </div>
+                    <div class="josa-preview">
+                        "${objectVocative(obj.name, obj.josaMode)}, 너는 뭘 좋아해?"
+                    </div>
+                </div>
+            `).join('');
+
+            // 각 물건 사진 영역에 드래그 앤 드롭 설정
+            container.querySelectorAll('.photo-upload').forEach((el, idx) => {
+                setupDropZone(el, 'object', idx);
+            });
+        }
+
+        function renderFamilyGrid() {
+            const grid = document.getElementById('familyGrid');
+            grid.innerHTML = FAMILY_OPTIONS.map(member => `
+                <div class="family-member ${state.familyMembers.find(m => m.id === member.id) ? 'selected' : ''}"
+                     onclick="toggleFamilyMember('${member.id}')">
+                    <div class="emoji">${member.emoji}</div>
+                    <div class="relation">${member.relation}</div>
+                    <div class="photo-slot" id="familyPhoto_${member.id}">
+                        ${getFamilyPhotoHTML(member.id)}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function getFamilyPhotoHTML(memberId) {
+            const member = state.familyMembers.find(m => m.id === memberId);
+            if (member && member.photo) {
+                return `<img src="${member.photo}" alt="${member.relation}">`;
+            }
+            return '';
+        }
+
+        function renderThumbnails() {
+            const container = document.getElementById('thumbnails');
+            const totalPages = 24;
+
+            container.innerHTML = '';
+            for (let i = 0; i < totalPages; i += 2) {
+                const thumb = document.createElement('div');
+                thumb.className = `thumbnail ${state.currentSpread === i / 2 ? 'active' : ''}`;
+                thumb.textContent = `${i + 1}-${i + 2}`;
+                thumb.onclick = () => goToSpread(i / 2);
+                container.appendChild(thumb);
+            }
+        }
+
+        // ============================================
+        // 이벤트 핸들러
+        // ============================================
+        function updateObjectName(index, value) {
+            state.objects[index].name = value;
+        }
+
+        function updateObjectJosaMode(index, mode) {
+            state.objects[index].josaMode = mode;
+            renderObjectInputs();
+        }
+
+        async function handleObjectPhoto(index, event) {
+            let file = event.target.files[0];
+            if (file) {
+                // HEIC 변환
+                if (isHeicFile(file)) {
+                    file = await convertHeicToJpeg(file);
+                    if (!file) return;
+                }
+
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    state.objects[index].photo = e.target.result;
+                    renderObjectInputs();
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        async function handlePhotoUpload(event, type) {
+            let file = event.target.files[0];
+            if (file) {
+                // HEIC 변환
+                if (isHeicFile(file)) {
+                    file = await convertHeicToJpeg(file);
+                    if (!file) return;
+                }
+
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    if (type === 'child') {
+                        state.childPhoto = e.target.result;
+                        updateChildPhotoUI(e.target.result);
+                    }
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function toggleFamilyMember(memberId) {
+            const existingIndex = state.familyMembers.findIndex(m => m.id === memberId);
+
+            if (existingIndex >= 0) {
+                state.familyMembers.splice(existingIndex, 1);
+            } else {
+                const memberInfo = FAMILY_OPTIONS.find(m => m.id === memberId);
+                state.familyMembers.push({
+                    ...memberInfo,
+                    photo: null
+                });
+            }
+
+            renderFamilyGrid();
+        }
+
+        // ============================================
+        // 페이지 네비게이션
+        // ============================================
+        function prevSpread() {
+            if (state.currentSpread > 0) {
+                state.currentSpread--;
+                renderSpread();
+                renderThumbnails();
+            }
+        }
+
+        function nextSpread() {
+            if (state.currentSpread < 11) {
+                state.currentSpread++;
+                renderSpread();
+                renderThumbnails();
+            }
+        }
+
+        function goToSpread(spreadIndex) {
+            state.currentSpread = spreadIndex;
+            renderSpread();
+            renderThumbnails();
+        }
+
+        // ============================================
+        // 책 생성 - Master Schema 기반
+        // ============================================
+        async function generateBook() {
+            state.childName = document.getElementById('childFirstName').value || '아이';
+
+            // 먼저 원본 사진으로 책 생성 (즉시 보여주기)
+            state.currentSpread = 0;
+            updateBookPreview();
+            showToast('동화책 생성 시작! 배경 제거 중...');
+
+            // 배경 제거를 하면서 실시간 업데이트
+            await processAllPhotosWithLiveUpdate();
+
+            showToast('동화책이 완성되었습니다!');
+        }
+
+        // 실시간 책 프리뷰 업데이트
+        function updateBookPreview() {
+            const storyBoard = generateStoryBoard(THEME_CONFIG, state);
+            state.generatedBook = storyBoard;
+            renderSpread();
+            renderThumbnails();
+            document.getElementById('schemaInfo').textContent =
+                JSON.stringify(storyBoard, null, 2);
+        }
+
+        // ============================================
+        // StoryBoard 생성 함수 (핵심 로직)
+        // ============================================
+        function generateStoryBoard(theme, userData) {
+            const pages = [];
+            const childName = userData.childName;
+            const objects = userData.objects;
+            const family = userData.familyMembers;
+
+            // 각 페이지 구조에 따라 생성
+            theme.pageStructure.forEach((pageConfig) => {
+                const pageData = {
+                    pageNumber: pageConfig.page,
+                    type: pageConfig.type,
+                    content: {}
+                };
+
+                switch (pageConfig.type) {
+                    case 'title':
+                        const titleObjData = objects[0];
+                        const titleObj = titleObjData?.name || '물건';
+                        const titleMode = titleObjData?.josaMode || 'friend';
+                        pageData.content = {
+                            text: `나는 ${objectWithJosa(titleObj, '를', titleMode)} 좋아해`,
+                            childName: childName
+                        };
+                        break;
+
+                    case 'intro':
+                        const introObjData = objects[0];
+                        const introObj = introObjData?.name || '이것';
+                        const introMode = introObjData?.josaMode || 'friend';
+                        pageData.content = {
+                            text: `${withJosa(childName, '야')},\n너는 뭘 좋아해?`,
+                            image: userData.childPhotoNoBg || userData.childPhoto,
+                            speechBubble: `나는 ${objectWithJosa(introObj, '를', introMode)} 좋아해!`
+                        };
+                        break;
+
+                    case 'chain_question':
+                        const qIdx = pageConfig.chainIndex;
+                        const actor = objects[qIdx];
+                        const actorMode = actor?.josaMode || 'friend';
+                        // 호칭(Vocative): friend면 "토끼야/로봇아", object면 "토끼/로봇"
+                        const vocative = objectVocative(actor?.name || '캐릭터', actorMode);
+                        pageData.content = {
+                            text: `${vocative},\n너는 뭘 좋아해?`,
+                            character: {
+                                ...actor,
+                                photo: actor?.photoNoBg || actor?.photo
+                            },
+                            isQuestion: true
+                        };
+                        break;
+
+                    case 'chain_answer':
+                        const aIdx = pageConfig.chainIndex;
+                        const answerer = objects[aIdx];
+                        const target = objects[aIdx + 1];
+                        // 마지막 물건이면 타겟은 아이 (사람이므로 일반 조사 사용)
+                        const isLastObject = aIdx === objects.length - 1;
+                        const targetName = target ? target.name : childName;
+                        const targetMode = target?.josaMode || 'friend';
+                        const answerText = isLastObject
+                            ? `나는 ${withJosa(targetName, '를')} 좋아해.`  // 아이는 사람이므로 일반 조사
+                            : `나는 ${objectWithJosa(targetName, '를', targetMode)} 좋아해.`;  // 각 물건의 개별 모드 적용
+                        pageData.content = {
+                            text: answerText,
+                            character: {
+                                ...answerer,
+                                photo: answerer?.photoNoBg || answerer?.photo
+                            },
+                            target: target ? {
+                                ...target,
+                                photo: target?.photoNoBg || target?.photo
+                            } : { name: childName },
+                            isAnswer: true
+                        };
+                        break;
+
+                    case 'climax_question':
+                        const lastObj = objects[objects.length - 1];
+                        const lastObjMode = lastObj?.josaMode || 'friend';
+                        pageData.content = {
+                            text: `그럼 ${objectWithJosa(lastObj?.name || '캐릭터', '는', lastObjMode)}\n뭘 제일 좋아하냐면...`,
+                            character: lastObj
+                        };
+                        break;
+
+                    case 'climax_heart':
+                        pageData.content = {
+                            visual: 'heart',
+                            text: '두근두근...'
+                        };
+                        break;
+
+                    case 'child_reveal':
+                        pageData.content = {
+                            text: `바로 ${childName}!`,
+                            image: userData.childPhotoNoBg || userData.childPhoto,
+                            highlight: true
+                        };
+                        break;
+
+                    case 'all_together':
+                        pageData.content = {
+                            text: '모두 함께!',
+                            characters: objects.map(obj => ({
+                                ...obj,
+                                photo: obj.photoNoBg || obj.photo
+                            })),
+                            childImage: userData.childPhotoNoBg || userData.childPhoto
+                        };
+                        break;
+
+                    case 'family_intro':
+                        pageData.content = {
+                            text: `우리도 ${withJosa(childName, '를')} 좋아해!`,
+                            exclamation: '잠깐만!'
+                        };
+                        break;
+
+                    case 'family_grid':
+                    case 'family_grid_2':
+                        // 동적 가족 레이아웃
+                        pageData.content = createFamilyLayout(family, pageConfig.type === 'family_grid' ? 0 : 1);
+                        break;
+
+                    case 'child_loves_family':
+                    case 'child_loves_family_2':
+                        const relations = family.map(m => m.relation).join(', ');
+                        // 마지막 가족 구성원에 맞춰 조사 결정
+                        const lastRelation = family.length > 0 ? family[family.length - 1].relation : '';
+                        const relationsWithJosa = relations + josa(lastRelation, '를');
+                        pageData.content = {
+                            text: `나도 ${relationsWithJosa} 좋아해!`,
+                            childImage: userData.childPhoto
+                        };
+                        break;
+
+                    case 'who_best':
+                        pageData.content = {
+                            text: '누가 제일 좋아?',
+                            childImage: userData.childPhoto
+                        };
+                        break;
+
+                    case 'secret':
+                        pageData.content = {
+                            text: `비밀인데...\n${withJosa(childName, '가')} 제일 좋아하는 건\n바로 너야!`,
+                            isSecret: true
+                        };
+                        break;
+
+                    case 'character_intro':
+                    case 'character_intro_2':
+                        pageData.content = {
+                            characters: objects,
+                            text: '등장인물 소개'
+                        };
+                        break;
+
+                    case 'credits':
+                        pageData.content = {
+                            text: `${childName}의 특별한 이야기`,
+                            copyright: '라이언북'
+                        };
+                        break;
+                }
+
+                pages.push(pageData);
+            });
+
+            return {
+                themeId: theme.themeId,
+                childName: childName,
+                createdAt: new Date().toISOString(),
+                pages: pages,
+                familyLayout: calculateFamilyLayout(family.length)
+            };
+        }
+
+        // ============================================
+        // 동적 가족 레이아웃 시스템
+        // ============================================
+        function createFamilyLayout(familyMembers, pageIndex) {
+            const layout = calculateFamilyLayout(familyMembers.length);
+            const startIdx = pageIndex * layout.perPage;
+            const endIdx = Math.min(startIdx + layout.perPage, familyMembers.length);
+            const membersForPage = familyMembers.slice(startIdx, endIdx);
+
+            return {
+                layout: layout.type,
+                columns: layout.columns,
+                rows: layout.rows,
+                members: membersForPage
+            };
+        }
+
+        function calculateFamilyLayout(memberCount) {
+            // 가족 수에 따른 동적 레이아웃
+            if (memberCount <= 2) {
+                return { type: '1x2', columns: 2, rows: 1, perPage: 2 };
+            } else if (memberCount <= 4) {
+                return { type: '2x2', columns: 2, rows: 2, perPage: 4 };
+            } else if (memberCount <= 6) {
+                return { type: '2x3', columns: 3, rows: 2, perPage: 6 };
+            } else {
+                return { type: '3x3', columns: 3, rows: 3, perPage: 9 };
+            }
+        }
+
+        // ============================================
+        // 스프레드 렌더링
+        // ============================================
+        function renderSpread() {
+            const leftPageNum = state.currentSpread * 2 + 1;
+            const rightPageNum = state.currentSpread * 2 + 2;
+
+            document.getElementById('pageIndicator').textContent =
+                `${leftPageNum}-${rightPageNum} / 24`;
+
+            if (state.generatedBook) {
+                const leftPage = state.generatedBook.pages[leftPageNum - 1];
+                const rightPage = state.generatedBook.pages[rightPageNum - 1];
+
+                renderPage('leftPage', leftPage, leftPageNum);
+                renderPage('rightPage', rightPage, rightPageNum);
+            } else {
+                // 기본 플레이스홀더
+                document.getElementById('leftPage').innerHTML = `
+                    <div class="page-content">
+                        <p style="color: #999;">페이지 ${leftPageNum}</p>
+                    </div>
+                    <span class="page-number">${leftPageNum}</span>
+                `;
+                document.getElementById('rightPage').innerHTML = `
+                    <div class="page-content">
+                        <p style="color: #999;">페이지 ${rightPageNum}</p>
+                    </div>
+                    <span class="page-number">${rightPageNum}</span>
+                `;
+            }
+        }
+
+        function renderPage(elementId, pageData, pageNum) {
+            const el = document.getElementById(elementId);
+
+            if (!pageData) {
+                el.innerHTML = `<div class="page-content"><p>빈 페이지</p></div>`;
+                return;
+            }
+
+            let html = '<div class="page-content">';
+
+            switch (pageData.type) {
+                case 'title':
+                    html += `
+                        <div style="font-size: 1.5rem; font-weight: bold; color: var(--primary);">
+                            ${pageData.content.text}
+                        </div>
+                        <div style="margin-top: 20px; font-size: 1.2rem;">
+                            <span class="child-name">${pageData.content.childName}</span>의 이야기
+                        </div>
+                    `;
+                    break;
+
+                case 'intro':
+                    html += `
+                        <div class="dialogue">${pageData.content.text}</div>
+                        ${pageData.content.image
+                            ? `<img src="${pageData.content.image}" style="width: 120px; height: 120px; margin-top: 16px; object-fit: contain;">`
+                            : '<div class="character-img">👶</div>'}
+                        <div style="background: var(--accent); padding: 10px 16px; border-radius: 20px; margin-top: 12px; font-size: 0.9rem;">
+                            ${pageData.content.speechBubble}
+                        </div>
+                    `;
+                    break;
+
+                case 'chain_question':
+                    const qChar = pageData.content.character;
+                    html += `
+                        ${qChar?.photo
+                            ? `<img src="${qChar.photo}" style="width: 100px; height: 100px; object-fit: contain; margin-bottom: 12px;">`
+                            : `<div class="character-img">${qChar?.emoji || '❓'}</div>`}
+                        <div class="dialogue">${pageData.content.text.replace('\n', '<br>')}</div>
+                    `;
+                    break;
+
+                case 'chain_answer':
+                    const aChar = pageData.content.character;
+                    html += `
+                        ${aChar?.photo
+                            ? `<img src="${aChar.photo}" style="width: 100px; height: 100px; object-fit: contain; margin-bottom: 12px;">`
+                            : `<div class="character-img">${aChar?.emoji || '💬'}</div>`}
+                        <div class="dialogue">${pageData.content.text}</div>
+                    `;
+                    break;
+
+                case 'climax_heart':
+                    html += `
+                        <div style="font-size: 5rem;">❤️</div>
+                        <div class="dialogue">${pageData.content.text}</div>
+                    `;
+                    break;
+
+                case 'child_reveal':
+                    html += `
+                        <div style="font-size: 1.5rem; font-weight: bold; color: var(--primary);">
+                            ${pageData.content.text}
+                        </div>
+                        ${pageData.content.image
+                            ? `<img src="${pageData.content.image}" style="width: 140px; height: 140px; margin-top: 16px; object-fit: contain;">`
+                            : '<div class="character-img" style="border: 4px solid var(--primary);">👶</div>'}
+                    `;
+                    break;
+
+                case 'family_grid':
+                case 'family_grid_2':
+                    const members = pageData.content.members || [];
+                    const cols = pageData.content.columns || 2;
+                    html += `
+                        <div style="display: grid; grid-template-columns: repeat(${cols}, 1fr); gap: 10px; width: 100%;">
+                            ${members.map(m => `
+                                <div style="text-align: center;">
+                                    <div style="font-size: 2rem;">${m.emoji}</div>
+                                    <div style="font-size: 0.85rem;">${m.relation}</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                    break;
+
+                case 'secret':
+                    html += `
+                        <div style="font-size: 1.1rem; line-height: 2; color: var(--dark);">
+                            ${pageData.content.text.replace(/\n/g, '<br>')}
+                        </div>
+                    `;
+                    break;
+
+                default:
+                    html += `
+                        <div class="dialogue">${pageData.content.text || pageData.type}</div>
+                    `;
+            }
+
+            html += '</div>';
+            html += `<span class="page-number">${pageNum}</span>`;
+
+            el.innerHTML = html;
+        }
+
+        // ============================================
+        // 유틸리티
+        // ============================================
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.classList.add('show');
+
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        // 초기화 실행
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
