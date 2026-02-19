@@ -310,13 +310,17 @@ function buildCoverContent() {
 
     // Model toggle inside the card
     const activeModels = BG_REMOVE_MODELS.filter(m => m.key !== 'removebg' || useRemoveBg);
+    const activeCandidate = coverCandidates[activeCandidateIndex];
+    const failedSet = activeCandidate && activeCandidate.failedModels || new Set();
     let activeIdx = 0;
     const toggleOpts = activeModels.map((m, idx) => {
       const loaded = !!coverPhotoOptions[m.key];
+      const failed = failedSet.has(m.key);
       const active = selectedModelKey === m.key;
       let cls = 'model-toggle-option';
       if (active) { cls += ' active'; activeIdx = idx; }
-      if (!loaded) cls += ' model-toggle-loading';
+      if (failed) cls += ' model-toggle-failed';
+      else if (!loaded) cls += ' model-toggle-loading';
       return `<div class="${cls}" data-model="${m.key}" data-idx="${idx}">${m.label}</div>`;
     }).join('');
     const indicatorHtml = `<div class="model-toggle-indicator" style="transform:translateX(${activeIdx * 46}px)"></div>`;
@@ -1323,6 +1327,8 @@ async function processCandidate(candidate) {
     const extractAndApply = async (resp, modelKey) => {
       if (!resp.ok) {
         console.warn(`[${modelKey}] 서버 응답 실패: ${resp.status} ${resp.statusText}`);
+        if (candidate.failedModels) candidate.failedModels.add(modelKey);
+        syncAndRender();
         return;
       }
       const cropX = parseInt(resp.headers.get('X-Crop-X') || '0');
@@ -1410,13 +1416,18 @@ async function processCandidate(candidate) {
       syncAndRender();
     };
 
+    if (!candidate.failedModels) candidate.failedModels = new Set();
     const activeModels = BG_REMOVE_MODELS.filter(m => m.key !== 'removebg' || useRemoveBg);
     const promises = activeModels.map(m => {
       const fd = new FormData();
       fd.append('file', fileToSend);
       return fetch(`${SMART_CROP_API}/remove-bg?model=${m.key}`, { method: 'POST', body: fd })
         .then(r => extractAndApply(r, m.key))
-        .catch(e => console.warn(`[${m.key}] fetch 실패:`, e.message));
+        .catch(e => {
+          console.warn(`[${m.key}] fetch 실패:`, e.message);
+          candidate.failedModels.add(m.key);
+          syncAndRender();
+        });
     });
     await Promise.allSettled(promises);
 
@@ -1446,7 +1457,7 @@ async function runProcessingQueue() {
     const activeCandidate = coverCandidates[activeCandidateIndex];
     const activeIdx = processingQueue.findIndex(c => c === activeCandidate);
     if (activeIdx !== -1) batch.push(processingQueue.splice(activeIdx, 1)[0]);
-    while (batch.length < 3 && processingQueue.length > 0) {
+    while (batch.length < 2 && processingQueue.length > 0) {
       batch.push(processingQueue.shift());
     }
     await Promise.allSettled(batch.map(c => processCandidate(c)));

@@ -709,6 +709,11 @@
   .model-toggle-loading.active {
     animation: toggle-pulse 1s ease-in-out infinite;
   }
+  .model-toggle-failed {
+    opacity: 0.2;
+    pointer-events: none;
+    text-decoration: line-through;
+  }
   @keyframes toggle-pulse {
     0%, 100% { opacity: 0.4; }
     50% { opacity: 0.7; }
