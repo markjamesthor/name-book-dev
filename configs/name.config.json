@@ -23,20 +23,27 @@
     "elephant_close": "NAME/u9138982156_glowing_magical_forest_ground_soft_cyan_light_on_th_6a7eea50-0216-4af6-8bf7-a22fbd23ad41.png",
     "cauldron": "NAME/u9138982156_A_whimsical_storybook_illustration_of_a_rustic_anci_22f1727d-5a21-4005-adbe-d49bb773279c.png",
     "light_gate": "NAME/u9138982156_extreme_wide_shot_seen_from_behind_two_tiny_figures_ba9a564a-e227-478e-8326-257632210b2e.png",
+    "castle_frames": "NAME/u9138982156_technical_flat_front_elevation_view_perfectly_strai_5f847c61-c36d-499c-8cec-331b46d0fbce.png",
     "blank": "NAME/blank.png"
   },
   "versions": {
     "A": {
       "label": "베이비 모드 (0~4세)",
-      "description": "의성어/의태어 중심, 17장",
+      "description": "의성어/의태어 중심, 18장",
       "pages": [
         {
           "scene": 0,
           "title": "프롤로그",
-          "illustration": "blank",
+          "pageType": "frame",
+          "illustration": "castle_frames",
           "textColor": "white",
-          "textPosition": "center",
-          "text": "이 이야기는 {name}가 너무 어려서 기억 못 할 때 일어난 일이야."
+          "textPosition": "bottom",
+          "text": "이 이야기는 {name}가 너무 어려서 기억 못 할 때 일어난 일이야.",
+          "frameStyle": "none",
+          "frame": {
+            "x": 58.13, "y": 53, "width": 11.74, "height": 20,
+            "rotation": 0
+          }
         },
         {
           "scene": 1,
@@ -161,24 +168,58 @@
         {
           "scene": 16,
           "title": "에필로그",
+          "pageType": "polaroid_album",
           "illustration": "blank",
+          "bgGradient": "linear-gradient(135deg, #3a2a1a 0%, #5a4030 50%, #3a2a1a 100%)",
           "textColor": "white",
-          "textPosition": "center",
-          "text": ""
+          "textPosition": "none",
+          "text": "",
+          "polaroidSlots": [
+            { "x": 3,  "y": 4,  "width": 26, "height": 30, "rotation": -6 },
+            { "x": 33, "y": 2,  "width": 26, "height": 30, "rotation": 4 },
+            { "x": 64, "y": 5,  "width": 26, "height": 30, "rotation": -3 },
+            { "x": 8,  "y": 38, "width": 26, "height": 30, "rotation": 5 },
+            { "x": 37, "y": 36, "width": 26, "height": 30, "rotation": -4 },
+            { "x": 66, "y": 40, "width": 26, "height": 30, "rotation": 7 }
+          ]
+        },
+        {
+          "scene": 17,
+          "title": "에필로그 2",
+          "pageType": "polaroid_album",
+          "illustration": "blank",
+          "bgGradient": "linear-gradient(135deg, #2a1a2e 0%, #4a3050 50%, #2a1a2e 100%)",
+          "textColor": "white",
+          "textPosition": "none",
+          "text": "",
+          "polaroidSlots": [
+            { "x": 3,  "y": 4,  "width": 26, "height": 30, "rotation": 5 },
+            { "x": 33, "y": 2,  "width": 26, "height": 30, "rotation": -3 },
+            { "x": 64, "y": 5,  "width": 26, "height": 30, "rotation": 6 },
+            { "x": 8,  "y": 38, "width": 26, "height": 30, "rotation": -5 },
+            { "x": 37, "y": 36, "width": 26, "height": 30, "rotation": 3 },
+            { "x": 66, "y": 40, "width": 26, "height": 30, "rotation": -7 }
+          ]
         }
       ]
     },
     "B": {
       "label": "키즈 모드 (5~8세)",
-      "description": "축복 의미 설명, 17장",
+      "description": "축복 의미 설명, 18장",
       "pages": [
         {
           "scene": 0,
           "title": "프롤로그",
-          "illustration": "blank",
+          "pageType": "frame",
+          "illustration": "castle_frames",
           "textColor": "white",
-          "textPosition": "center",
-          "text": "이 이야기는 {name}가 너무 어려서 기억 못 할 때 일어난 일이에요."
+          "textPosition": "bottom",
+          "text": "이 이야기는 {name}가 너무 어려서 기억 못 할 때 일어난 일이에요.",
+          "frameStyle": "none",
+          "frame": {
+            "x": 58.13, "y": 53, "width": 11.74, "height": 20,
+            "rotation": 0
+          }
         },
         {
           "scene": 1,
@@ -303,10 +344,38 @@
         {
           "scene": 16,
           "title": "에필로그",
+          "pageType": "polaroid_album",
           "illustration": "blank",
+          "bgGradient": "linear-gradient(135deg, #3a2a1a 0%, #5a4030 50%, #3a2a1a 100%)",
           "textColor": "white",
-          "textPosition": "center",
-          "text": ""
+          "textPosition": "none",
+          "text": "",
+          "polaroidSlots": [
+            { "x": 3,  "y": 4,  "width": 26, "height": 30, "rotation": -6 },
+            { "x": 33, "y": 2,  "width": 26, "height": 30, "rotation": 4 },
+            { "x": 64, "y": 5,  "width": 26, "height": 30, "rotation": -3 },
+            { "x": 8,  "y": 38, "width": 26, "height": 30, "rotation": 5 },
+            { "x": 37, "y": 36, "width": 26, "height": 30, "rotation": -4 },
+            { "x": 66, "y": 40, "width": 26, "height": 30, "rotation": 7 }
+          ]
+        },
+        {
+          "scene": 17,
+          "title": "에필로그 2",
+          "pageType": "polaroid_album",
+          "illustration": "blank",
+          "bgGradient": "linear-gradient(135deg, #2a1a2e 0%, #4a3050 50%, #2a1a2e 100%)",
+          "textColor": "white",
+          "textPosition": "none",
+          "text": "",
+          "polaroidSlots": [
+            { "x": 3,  "y": 4,  "width": 26, "height": 30, "rotation": 5 },
+            { "x": 33, "y": 2,  "width": 26, "height": 30, "rotation": -3 },
+            { "x": 64, "y": 5,  "width": 26, "height": 30, "rotation": 6 },
+            { "x": 8,  "y": 38, "width": 26, "height": 30, "rotation": -5 },
+            { "x": 37, "y": 36, "width": 26, "height": 30, "rotation": 3 },
+            { "x": 66, "y": 40, "width": 26, "height": 30, "rotation": -7 }
+          ]
         }
       ]
     }

@@ -1,4 +1,59 @@
 # server.py (최적화 버전: FP16 + Warmup + 보안 강화)
+import sys
+import os
+
+# === 로그 파일 설정 (stdout/stderr → 파일에 기록) ===
+LOG_PATH = os.environ.get("SERVER_LOG", r"C:\Users\taeho\server.log")
+
+class _LogWriter:
+    """stdout/stderr를 파일에 기록. 콘솔이 있으면 콘솔에도 출력."""
+    def __init__(self, log_file, original=None):
+        self.log_file = log_file
+        self.original = original
+        self._has_console = False
+        if original is not None:
+            try:
+                original.write("")
+                self._has_console = True
+            except Exception:
+                pass
+    def write(self, data):
+        if not data:
+            return
+        self.log_file.write(data)
+        self.log_file.flush()
+        if self._has_console:
+            try:
+                self.original.write(data)
+                self.original.flush()
+            except Exception:
+                self._has_console = False
+    def flush(self):
+        self.log_file.flush()
+        if self._has_console:
+            try:
+                self.original.flush()
+            except Exception:
+                pass
+    def isatty(self):
+        return False
+
+try:
+    _log_file = open(LOG_PATH, "a", encoding="utf-8", buffering=1)
+    sys.stdout = _LogWriter(_log_file, sys.__stdout__)
+    sys.stderr = _LogWriter(_log_file, sys.__stderr__)
+    print(f"\n{'='*60}")
+    from datetime import datetime
+    print(f"📋 서버 시작: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"📋 로그 파일: {LOG_PATH}")
+    print(f"{'='*60}")
+except Exception as e:
+    # 로그 파일 열기 실패 시에도 서버는 정상 동작해야 함
+    try:
+        sys.__stderr__.write(f"⚠️ 로그 파일 열기 실패: {e}\n")
+    except Exception:
+        pass
+
 from fastapi import FastAPI, File, UploadFile, HTTPException, Query, Form, Body
 from fastapi.responses import Response, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,7 +78,6 @@ import httpx
 from pathlib import Path
 
 # Ryan Engine 임포트
-import sys
 sys.path.insert(0, str(Path(__file__).parent))
 try:
     from ryan_engine import JosaUtils, BookGenerator
@@ -734,7 +788,9 @@ async def detect_pose(
         raise HTTPException(status_code=400, detail="파일이 너무 큽니다.")
 
     try:
-        image = Image.open(io.BytesIO(image_data)).convert("RGB")
+        image = Image.open(io.BytesIO(image_data))
+        image = ImageOps.exif_transpose(image)
+        image = image.convert("RGB")
     except Exception:
         raise HTTPException(status_code=400, detail="올바른 이미지 형식이 아닙니다.")
 

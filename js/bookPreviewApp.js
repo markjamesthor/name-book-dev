@@ -67,6 +67,13 @@ let coverManualOffset = null;
 let isEditingCoverPos = false;
 let coverCroppedFile = null;
 
+// 특수 페이지 사진 상태 (key: "frame_0" 또는 "polaroid_16_2" → { file, url })
+const pagePhotos = new Map();
+
+// 폴라로이드 위치 오프셋 (key: slotKey → { dx, dy } 컨테이너 % 단위)
+const polaroidOffsets = new Map();
+let polaroidDragJustEnded = false;
+
 // Multi-candidate cover photo system
 let coverCandidates = [];
 let activeCandidateIndex = -1;
@@ -137,6 +144,8 @@ function onPageChanged() {
   } else if (currentStep === 0) {
     setStep(1);
   }
+  // Update cover controls visibility based on page type
+  renderCoverControls();
 }
 
 // ========== Config Loading ==========
@@ -454,6 +463,8 @@ function buildSlideContent(pageIndex) {
   const page = pages[pageIndex];
 
   if (page.isCover) return buildCoverContent();
+  if (page.pageType === 'frame') return buildFrameContent(pageIndex);
+  if (page.pageType === 'polaroid_album') return buildPolaroidContent(pageIndex);
 
   let imgContent = '';
   let imgPath = '';
@@ -477,6 +488,392 @@ function buildSlideContent(pageIndex) {
         <div class="page-story-text">${text.replace(/\n/g, '<br>')}</div>
       </div>
     </div>`;
+}
+
+// ========== Frame Page (Page 1) ==========
+
+function buildFrameContent(pageIndex) {
+  const pages = getPages();
+  const page = pages[pageIndex];
+  const scene = page.scene;
+
+  let imgContent = '';
+  let imgPath = '';
+  if (page.illustration && config.illustrations[page.illustration]) {
+    imgPath = config.illustrations[page.illustration];
+    imgContent = `<div class="page-bg-blur" style="background-image:url('${imgPath}')"></div>
+      <img class="page-bg-img" src="${imgPath}" alt="${page.title}" style="object-fit:cover;object-position:top center;" />`;
+  }
+
+  const frame = page.frame || { x: 32, y: 10, width: 36, height: 52, rotation: 0 };
+  const slotKey = `frame_${scene}`;
+  const photo = pagePhotos.get(slotKey);
+
+  let frameInner;
+  if (photo) {
+    const bgPos = photo.bgPosition || 'center center';
+    const bgSize = photo.bgSize || 'cover';
+    frameInner = `<div class="baby-frame-photo" style="background-image:url('${photo.url}');background-size:${bgSize};background-position:${bgPos}"></div>`;
+  } else {
+    frameInner = `<div class="baby-frame-empty"><span class="frame-plus">+</span></div>`;
+  }
+
+  const noFrame = page.frameStyle === 'none';
+  const frameClass = noFrame ? 'baby-frame baby-frame-none' : 'baby-frame';
+  const emptyClass = photo ? '' : ' frame-wrap-empty';
+  const frameCfg = JSON.stringify(frame).replace(/"/g, '&quot;');
+  const frameHtml = `<div class="baby-frame-wrap${emptyClass}" data-slot-key="${slotKey}" data-frame-cfg="${frameCfg}" style="opacity:0;transform:rotate(${frame.rotation}deg)">
+    <div class="${frameClass}"><div class="baby-frame-inner">${frameInner}</div></div>
+  </div>`;
+
+  const frameHintDismissed = window._frameHintDismissed || photo;
+  const frameHintHtml = frameHintDismissed ? '' :
+    `<div class="frame-page-hint">
+      <span>액자를 선택해 아이 사진을 올려주세요</span>
+      <button class="frame-page-hint-close">&times;</button>
+    </div>`;
+
+  const text = substituteVars(page.text, variables);
+  const textColor = page.textColor || 'white';
+  const posClass = `text-pos-${page.textPosition || 'bottom'}`;
+  const bgVar = imgPath ? `--page-bg-url:url('${imgPath}');` : '';
+
+  return `
+    <div class="slide-img-wrap">${imgContent}${frameHtml}</div>
+    <div class="page-text-overlay ${posClass}" style="${bgVar}color:${textColor}">
+      <div class="page-text-scroll">
+        <div class="page-story-text">${text.replace(/\n/g, '<br>')}</div>
+      </div>
+      ${frameHintHtml}
+    </div>`;
+}
+
+// ========== Frame Overlay Positioning ==========
+
+function computeFrameContainerCoords(bgImg, imgWrap, frame) {
+  const natW = bgImg.naturalWidth;
+  const natH = bgImg.naturalHeight;
+  if (!natW || !natH) return null;
+
+  const contW = imgWrap.clientWidth;
+  const contH = imgWrap.clientHeight;
+  const imgAR = natW / natH;
+  const contAR = contW / contH;
+  let scale, offsetX;
+
+  if (imgAR > contAR) {
+    scale = contH / natH;
+    offsetX = (natW * scale - contW) * 0.5;
+  } else {
+    scale = contW / natW;
+    offsetX = 0;
+  }
+
+  return {
+    left: (frame.x / 100 * natW * scale - offsetX) / contW * 100,
+    top: (frame.y / 100 * natH * scale) / contH * 100,
+    width: (frame.width / 100 * natW * scale) / contW * 100,
+    height: (frame.height / 100 * natH * scale) / contH * 100,
+  };
+}
+
+function positionFrameOverlay() {
+  const wrap = document.querySelector('.baby-frame-wrap');
+  if (!wrap) return;
+  const cfgStr = wrap.dataset.frameCfg;
+  if (!cfgStr) return;
+
+  const imgWrap = wrap.closest('.slide-img-wrap');
+  const bgImg = imgWrap?.querySelector('.page-bg-img');
+  if (!bgImg) return;
+
+  const doPosition = () => {
+    const frame = JSON.parse(cfgStr);
+    const coords = computeFrameContainerCoords(bgImg, imgWrap, frame);
+    if (!coords) return;
+
+    wrap.style.left = coords.left + '%';
+    wrap.style.top = coords.top + '%';
+    wrap.style.width = coords.width + '%';
+    wrap.style.height = coords.height + '%';
+    wrap.style.opacity = '1';
+
+    bgImg.style.position = 'absolute';
+    bgImg.style.zIndex = '2';
+    bgImg.style.pointerEvents = 'none';
+
+    applyFrameMask(bgImg, coords);
+  };
+
+  if (bgImg.complete && bgImg.naturalWidth) {
+    doPosition();
+  } else {
+    bgImg.addEventListener('load', doPosition, { once: true });
+  }
+}
+
+function applyFrameMask(bgImg, coords) {
+  // Data URI SVG mask: white=show, black=hole (frame area transparent)
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" preserveAspectRatio="none">` +
+    `<rect width="100" height="100" fill="white"/>` +
+    `<rect x="${coords.left.toFixed(2)}" y="${coords.top.toFixed(2)}" width="${coords.width.toFixed(2)}" height="${coords.height.toFixed(2)}" fill="black"/>` +
+    `</svg>`;
+  const dataUri = 'data:image/svg+xml,' + encodeURIComponent(svg);
+  bgImg.style.webkitMaskImage = `url("${dataUri}")`;
+  bgImg.style.maskImage = `url("${dataUri}")`;
+  bgImg.style.webkitMaskSize = '100% 100%';
+  bgImg.style.maskSize = '100% 100%';
+}
+
+function scheduleFramePosition() {
+  positionFrameOverlay();
+  requestAnimationFrame(() => positionFrameOverlay());
+  setTimeout(() => positionFrameOverlay(), 100);
+  setTimeout(() => positionFrameOverlay(), 300);
+}
+
+// ========== Polaroid Album (Page 17) ==========
+
+function buildPolaroidContent(pageIndex) {
+  const pages = getPages();
+  const page = pages[pageIndex];
+  const scene = page.scene;
+  const slots = page.polaroidSlots || [];
+
+  let bgContent = '';
+  if (page.bgGradient) {
+    bgContent = `<div class="page-bg-gradient" style="background:${page.bgGradient}"></div>`;
+  }
+
+  let slotsHtml = '';
+  slots.forEach((slot, i) => {
+    const slotKey = `polaroid_${scene}_${i}`;
+    const photo = pagePhotos.get(slotKey);
+    const offset = polaroidOffsets.get(slotKey) || { dx: 0, dy: 0 };
+    const finalX = slot.x + offset.dx;
+    const finalY = slot.y + offset.dy;
+
+    let cardInner;
+    if (photo) {
+      cardInner = `<img src="${photo.url}" alt="사진 ${i + 1}" />`;
+    } else {
+      cardInner = `<div class="polaroid-empty">+</div>`;
+    }
+
+    slotsHtml += `<div class="polaroid-slot" data-slot-key="${slotKey}" data-orig-x="${slot.x}" data-orig-y="${slot.y}" data-rotation="${slot.rotation}" data-scene="${scene}" style="left:${finalX}%;top:${finalY}%;width:${slot.width}%;height:${slot.height}%;transform:rotate(${slot.rotation}deg)">
+      <div class="polaroid-card">${cardInner}</div>
+    </div>`;
+  });
+
+  const hintDismissed = window._polaroidHintDismissed;
+  const hintHtml = hintDismissed ? '' :
+    `<div class="polaroid-hint">
+      <span>사진 여러장을 한번에 올릴 수 있습니다</span>
+      <button class="polaroid-hint-close">&times;</button>
+    </div>`;
+
+  return `
+    <div class="slide-img-wrap">${bgContent}<div class="polaroid-container">${slotsHtml}</div>${hintHtml}</div>`;
+}
+
+// ========== Page Photo Upload ==========
+
+function handlePagePhotoUpload(slotKey, file) {
+  const url = URL.createObjectURL(file);
+  const old = pagePhotos.get(slotKey);
+  if (old) URL.revokeObjectURL(old.url);
+  pagePhotos.set(slotKey, { file, url });
+  renderCarousel();
+  renderThumbnails();
+
+  // 프레임 슬롯이면 ViTPose로 얼굴 위치 감지 (비동기)
+  if (slotKey.startsWith('frame_')) {
+    detectAndCropForFrame(slotKey, file);
+  }
+}
+
+async function detectAndCropForFrame(slotKey, file) {
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    const resp = await fetch(`${SMART_CROP_API}/detect-pose?model=vitpose`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (!resp.ok) return;
+    const data = await resp.json();
+    if (!data.success || !data.keypoints) return;
+
+    const kps = data.keypoints;
+    const imgW = data.image_width;
+    const imgH = data.image_height;
+
+    // 코(0)=얼굴 중심, 어깨(11,12)=상반신 하단
+    const nose = kps[0];
+    const lShoulder = kps[11];
+    const rShoulder = kps[12];
+    if (nose.score < 0.3) return;
+
+    // 얼굴 상단 추정 (귀 위치 활용)
+    const lEar = kps[7];
+    const rEar = kps[8];
+    let faceTop = nose.y;
+    if (lEar.score > 0.3) faceTop = Math.min(faceTop, lEar.y);
+    if (rEar.score > 0.3) faceTop = Math.min(faceTop, rEar.y);
+    const faceHeight = (nose.y - faceTop) * 2.5;
+    const headTop = Math.max(0, nose.y - faceHeight);
+
+    // 어깨 위치
+    let shoulderY = nose.y;
+    if (lShoulder.score > 0.3) shoulderY = Math.max(shoulderY, lShoulder.y);
+    if (rShoulder.score > 0.3) shoulderY = Math.max(shoulderY, rShoulder.y);
+
+    // 상반신 영역 (머리 위 ~ 어깨 아래)
+    const regionTop = headTop;
+    const regionBottom = shoulderY;
+    const regionH = regionBottom - regionTop;
+
+    // background-size: 상반신이 프레임 높이의 ~70%를 차지하도록 확대
+    const regionPct = (regionH / imgH) * 100;
+    const bgSizePct = Math.round(Math.max(150, Math.min(220, 55 / regionPct * 100)));
+
+    // background-position
+    const bgX = Math.round(Math.max(0, Math.min(100, (nose.x / imgW) * 100)));
+    // Y: 직접 얼굴 % 위치 기반으로 설정
+    // 이미지에서 얼굴이 위에 있을수록 bgY를 작게 (상단 표시)
+    const faceYpct = (nose.y / imgH) * 100;
+    const bgY = Math.round(Math.max(0, Math.min(100, faceYpct * 0.3)));
+
+    console.log(`[Frame] ViTPose: face=${(nose.y/imgH*100).toFixed(0)}%, headTop=${(headTop/imgH*100).toFixed(0)}%, shoulder=${(shoulderY/imgH*100).toFixed(0)}%, region=${regionPct.toFixed(0)}% → bg: ${bgX}% ${bgY}% / auto ${bgSizePct}%`);
+
+    const entry = pagePhotos.get(slotKey);
+    if (entry) {
+      entry.bgPosition = `${bgX}% ${bgY}%`;
+      entry.bgSize = `auto ${bgSizePct}%`;
+      renderCarousel();
+      renderThumbnails();
+    }
+  } catch (e) {
+    console.warn('[Frame] ViTPose 감지 실패:', e.message);
+  }
+}
+
+function triggerPagePhotoInput(slotKey) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.style.display = 'none';
+  document.body.appendChild(input);
+  input.addEventListener('change', () => {
+    if (input.files.length > 0) handlePagePhotoUpload(slotKey, input.files[0]);
+    input.remove();
+  });
+  input.click();
+}
+
+// ========== Frame Photo Drag (터치로 사진 이동) ==========
+
+let frameDragging = false;
+
+function initFramePhotoDrag() {
+  let startX, startY, startBgX, startBgY;
+  let photoEl, slotKey, entry;
+
+  const getPhotoEl = (e) => {
+    const el = e.target.closest('.baby-frame-photo');
+    if (!el) return null;
+    const wrap = el.closest('.baby-frame-wrap');
+    return wrap ? { el, slotKey: wrap.dataset.slotKey } : null;
+  };
+
+  const parseBgPos = (pos) => {
+    const m = (pos || '50% 50%').match(/([\d.]+)%\s+([\d.]+)%/);
+    return m ? { x: parseFloat(m[1]), y: parseFloat(m[2]) } : { x: 50, y: 50 };
+  };
+
+  document.addEventListener('touchstart', (e) => {
+    const info = getPhotoEl(e);
+    if (!info) return;
+    entry = pagePhotos.get(info.slotKey);
+    if (!entry) return;
+
+    photoEl = info.el;
+    slotKey = info.slotKey;
+    frameDragging = true; // 즉시 설정 → 캐러셀 스와이프 차단
+    const touch = e.touches[0];
+    startX = touch.clientX;
+    startY = touch.clientY;
+    const bg = parseBgPos(entry.bgPosition);
+    startBgX = bg.x;
+    startBgY = bg.y;
+  }, { passive: true });
+
+  document.addEventListener('touchmove', (e) => {
+    if (!photoEl) return;
+    const touch = e.touches[0];
+    const dx = touch.clientX - startX;
+    const dy = touch.clientY - startY;
+
+    e.preventDefault();
+    if (Math.abs(dx) + Math.abs(dy) < 3) return; // 미세한 떨림 무시
+
+    // 감도: 프레임 크기 대비 이동량
+    const rect = photoEl.getBoundingClientRect();
+    const senX = 100 / Math.max(1, rect.width);
+    const senY = 100 / Math.max(1, rect.height);
+
+    // 드래그 방향과 bg-position 방향이 반대
+    const newX = Math.max(0, Math.min(100, startBgX - dx * senX));
+    const newY = Math.max(0, Math.min(100, startBgY - dy * senY));
+
+    photoEl.style.backgroundPosition = `${newX.toFixed(1)}% ${newY.toFixed(1)}%`;
+  }, { passive: false });
+
+  document.addEventListener('touchend', () => {
+    if (photoEl && entry) {
+      // bgPosition이 실제로 변경됐으면 저장
+      const cur = photoEl.style.backgroundPosition;
+      if (cur && cur !== `${startBgX}% ${startBgY}%`) {
+        entry.bgPosition = cur;
+      }
+    }
+    photoEl = null;
+    frameDragging = false;
+  });
+}
+
+function triggerPolaroidMultiInput(scene) {
+  const pages = getPages();
+  const page = pages.find(p => p.scene === scene && p.pageType === 'polaroid_album');
+  if (!page) return;
+
+  const slots = page.polaroidSlots || [];
+  const emptyKeys = [];
+  slots.forEach((_, i) => {
+    const key = `polaroid_${scene}_${i}`;
+    if (!pagePhotos.has(key)) emptyKeys.push(key);
+  });
+  if (emptyKeys.length === 0) return;
+
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.multiple = true;
+  input.style.display = 'none';
+  document.body.appendChild(input);
+  input.addEventListener('change', () => {
+    const files = Array.from(input.files).slice(0, emptyKeys.length);
+    files.forEach((file, i) => {
+      const url = URL.createObjectURL(file);
+      pagePhotos.set(emptyKeys[i], { file, url });
+    });
+    if (files.length > 0) {
+      renderCarousel();
+      renderThumbnails();
+    }
+    input.remove();
+  });
+  input.click();
 }
 
 let coverBgNatSize = null;
@@ -586,8 +983,10 @@ function renderCarousel() {
     const pageIdx = currentPageIndex + i;
     slide.dataset.pageIndex = String(pageIdx);
     const pages = getPages();
-    if (pageIdx >= 0 && pageIdx < pages.length && pages[pageIdx].isCover) {
-      slide.classList.add('slide-cover');
+    if (pageIdx >= 0 && pageIdx < pages.length) {
+      if (pages[pageIdx].isCover) slide.classList.add('slide-cover');
+      if (pages[pageIdx].pageType === 'frame') slide.classList.add('slide-frame');
+      if (pages[pageIdx].pageType === 'polaroid_album') slide.classList.add('slide-polaroid');
     }
     slide.innerHTML = buildSlideContent(pageIdx);
     track.appendChild(slide);
@@ -599,6 +998,7 @@ function renderCarousel() {
   updatePageInfo();
   setupCarouselTouch(track);
   positionCoverChild();
+  scheduleFramePosition();
   renderCoverControls();
 }
 
@@ -610,10 +1010,14 @@ function populateSlides() {
   for (let i = 0; i < 3; i++) {
     const pageIdx = currentPageIndex + (i - 1);
     slides[i].dataset.pageIndex = String(pageIdx);
-    slides[i].classList.toggle('slide-cover', pageIdx >= 0 && pageIdx < pages.length && pages[pageIdx].isCover);
+    const inRange = pageIdx >= 0 && pageIdx < pages.length;
+    slides[i].classList.toggle('slide-cover', inRange && pages[pageIdx].isCover);
+    slides[i].classList.toggle('slide-frame', inRange && pages[pageIdx].pageType === 'frame');
+    slides[i].classList.toggle('slide-polaroid', inRange && pages[pageIdx].pageType === 'polaroid_album');
     slides[i].innerHTML = buildSlideContent(pageIdx);
   }
   positionCoverChild();
+  scheduleFramePosition();
 }
 
 let pendingNormalize = null;
@@ -628,19 +1032,25 @@ function normalizeTrackIfNeeded() {
   const vw = els.pageViewer.clientWidth;
 
   const pages = getPages();
+  const applySlideClasses = (el, idx) => {
+    const inRange = idx >= 0 && idx < pages.length;
+    el.classList.toggle('slide-cover', inRange && pages[idx].isCover);
+    el.classList.toggle('slide-frame', inRange && pages[idx].pageType === 'frame');
+    el.classList.toggle('slide-polaroid', inRange && pages[idx].pageType === 'polaroid_album');
+  };
   if (direction > 0) {
     const first = track.firstElementChild;
     track.appendChild(first);
     const newPageIdx = currentPageIndex + 1;
     first.dataset.pageIndex = String(newPageIdx);
-    first.classList.toggle('slide-cover', newPageIdx >= 0 && newPageIdx < pages.length && pages[newPageIdx].isCover);
+    applySlideClasses(first, newPageIdx);
     first.innerHTML = buildSlideContent(newPageIdx);
   } else {
     const last = track.lastElementChild;
     track.insertBefore(last, track.firstElementChild);
     const newPageIdx = currentPageIndex - 1;
     last.dataset.pageIndex = String(newPageIdx);
-    last.classList.toggle('slide-cover', newPageIdx >= 0 && newPageIdx < pages.length && pages[newPageIdx].isCover);
+    applySlideClasses(last, newPageIdx);
     last.innerHTML = buildSlideContent(newPageIdx);
   }
 
@@ -648,6 +1058,7 @@ function normalizeTrackIfNeeded() {
   track.style.transform = `translateX(-${vw}px)`;
   track.offsetHeight;
   positionCoverChild();
+  scheduleFramePosition();
 }
 
 function updatePageInfo() {
@@ -689,8 +1100,10 @@ function goPage(delta) {
     finalized = true;
     currentPageIndex = next;
     pendingNormalize = { direction: delta };
+    normalizeTrackIfNeeded();
     updatePageInfo();
     positionCoverChild();
+    scheduleFramePosition();
     isAnimating = false;
     onPageChanged();
   };
@@ -805,8 +1218,20 @@ function setupCarouselTouch(track) {
   let childRotStartAngle = 0;
   let childRotStartRotation = 0;
 
+  // Polaroid drag state
+  let polDragSlot = null;
+  let polDragContainer = null;
+  let polDragStartX = 0;
+  let polDragStartY = 0;
+  let polDragStartDx = 0;
+  let polDragStartDy = 0;
+  let polDragPending = false;
+  let polIsDragging = false;
+
   track.addEventListener('touchstart', (e) => {
     if (isAnimating) return;
+    // 프레임 사진 드래그 중이면 캐러셀 무시
+    if (e.target.closest('.baby-frame-photo')) return;
 
     // If a second finger arrives while child drag is pending → switch to rotation
     if (childDragPending && e.touches.length === 2) {
@@ -831,6 +1256,24 @@ function setupCarouselTouch(track) {
         childDragStartDx = coverManualOffset.dx;
         childDragStartDy = coverManualOffset.dy;
         childDragPending = true;
+        return;
+      }
+    }
+
+    // Prepare polaroid slot drag
+    if (!isPinching && !polDragPending && e.touches.length === 1) {
+      const slot = e.target.closest('.polaroid-slot');
+      if (slot && slot.dataset.slotKey) {
+        const slotKey = slot.dataset.slotKey;
+        const existing = polaroidOffsets.get(slotKey) || { dx: 0, dy: 0 };
+        polDragSlot = slot;
+        polDragContainer = slot.closest('.polaroid-container');
+        polDragStartX = e.touches[0].clientX;
+        polDragStartY = e.touches[0].clientY;
+        polDragStartDx = existing.dx;
+        polDragStartDy = existing.dy;
+        polDragPending = true;
+        polIsDragging = false;
         return;
       }
     }
@@ -868,7 +1311,7 @@ function setupCarouselTouch(track) {
   }, { passive: true });
 
   track.addEventListener('touchmove', (e) => {
-    if (isAnimating) return;
+    if (isAnimating || frameDragging) return;
 
     // Child rotation (two-finger on child photo)
     if (childRotating && childDragImg && e.touches.length === 2) {
@@ -924,6 +1367,32 @@ function setupCarouselTouch(track) {
       coverManualOffset.dx = childDragStartDx + dx;
       coverManualOffset.dy = childDragStartDy + dy;
       applyCoverManualOffset(childDragImg);
+      return;
+    }
+
+    // Polaroid slot drag
+    if (polDragPending && polDragSlot) {
+      const dx = e.touches[0].clientX - polDragStartX;
+      const dy = e.touches[0].clientY - polDragStartY;
+      if (!polIsDragging && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+        polIsDragging = true;
+        polDragSlot.style.transition = 'none';
+        polDragSlot.style.zIndex = '10';
+      }
+      if (polIsDragging) {
+        e.preventDefault();
+        const containerRect = polDragContainer.getBoundingClientRect();
+        const pctDx = (dx / containerRect.width) * 100;
+        const pctDy = (dy / containerRect.height) * 100;
+        const origX = parseFloat(polDragSlot.dataset.origX);
+        const origY = parseFloat(polDragSlot.dataset.origY);
+        const newDx = polDragStartDx + pctDx;
+        const newDy = polDragStartDy + pctDy;
+        polDragSlot.style.left = `${origX + newDx}%`;
+        polDragSlot.style.top = `${origY + newDy}%`;
+        polDragSlot._tempDx = newDx;
+        polDragSlot._tempDy = newDy;
+      }
       return;
     }
 
@@ -995,6 +1464,7 @@ function setupCarouselTouch(track) {
 
   let lastTapTime = 0;
   track.addEventListener('touchend', (e) => {
+    if (frameDragging) return;
     // Child rotation end — if one finger lifts, stop rotating but keep state
     if (childRotating && e.touches.length < 2) {
       childRotating = false;
@@ -1019,6 +1489,27 @@ function setupCarouselTouch(track) {
         isEditingCoverPos = false;
         saveGlobalsToActiveCandidate();
       }
+      return;
+    }
+
+    // Polaroid slot drag end
+    if (polDragPending || polIsDragging) {
+      if (polIsDragging && polDragSlot) {
+        const slotKey = polDragSlot.dataset.slotKey;
+        if (polDragSlot._tempDx != null) {
+          polaroidOffsets.set(slotKey, { dx: polDragSlot._tempDx, dy: polDragSlot._tempDy });
+          delete polDragSlot._tempDx;
+          delete polDragSlot._tempDy;
+        }
+        polDragSlot.style.transition = '';
+        polDragSlot.style.zIndex = '';
+        polaroidDragJustEnded = true;
+        setTimeout(() => { polaroidDragJustEnded = false; }, 300);
+      }
+      polDragSlot = null;
+      polDragContainer = null;
+      polDragPending = false;
+      polIsDragging = false;
       return;
     }
 
@@ -1088,6 +1579,7 @@ function setupCarouselTouch(track) {
         fin1 = true;
         currentPageIndex++;
         pendingNormalize = { direction: 1 };
+        normalizeTrackIfNeeded();
         updatePageInfo();
         positionCoverChild();
         isAnimating = false;
@@ -1106,6 +1598,7 @@ function setupCarouselTouch(track) {
         fin2 = true;
         currentPageIndex--;
         pendingNormalize = { direction: -1 };
+        normalizeTrackIfNeeded();
         updatePageInfo();
         positionCoverChild();
         isAnimating = false;
@@ -1127,8 +1620,6 @@ function renderThumbnails() {
   const strip = els.thumbnailStrip;
   strip.innerHTML = '';
 
-  const needPhotoPages = new Set([0, 1, 17]);
-
   pages.forEach((page, i) => {
     const wrap = document.createElement('div');
     wrap.className = 'thumb-wrap';
@@ -1149,7 +1640,17 @@ function renderThumbnails() {
     thumb.addEventListener('click', () => jumpToPage(i));
     wrap.appendChild(thumb);
 
-    if (needPhotoPages.has(i) && !coverPhotoURL) {
+    // 사진 필요 여부 판단
+    let needsPhoto = false;
+    if (page.isCover) {
+      needsPhoto = !coverPhotoURL;
+    } else if (page.pageType === 'frame') {
+      needsPhoto = !pagePhotos.has(`frame_${page.scene}`);
+    } else if (page.pageType === 'polaroid_album') {
+      const slots = page.polaroidSlots || [];
+      needsPhoto = slots.some((_, si) => !pagePhotos.has(`polaroid_${page.scene}_${si}`));
+    }
+    if (needsPhoto) {
       const label = document.createElement('div');
       label.className = 'thumb-need-photo';
       label.textContent = '사진 필요';
@@ -1708,6 +2209,42 @@ function setupCoverEvents() {
 
   // Delegate clicks for cover controls (in bottom panel + carousel)
   document.addEventListener('click', (e) => {
+    // Frame / Polaroid slot click → trigger file input
+    const frameWrap = e.target.closest('.baby-frame-wrap');
+    if (frameWrap) {
+      const slotKey = frameWrap.dataset.slotKey;
+      if (slotKey) triggerPagePhotoInput(slotKey);
+      return;
+    }
+    // Frame hint dismiss
+    if (e.target.closest('.frame-page-hint-close')) {
+      window._frameHintDismissed = true;
+      const hint = e.target.closest('.frame-page-hint');
+      if (hint) hint.remove();
+      return;
+    }
+    // Polaroid hint dismiss
+    if (e.target.closest('.polaroid-hint-close')) {
+      window._polaroidHintDismissed = true;
+      const hint = e.target.closest('.polaroid-hint');
+      if (hint) hint.remove();
+      return;
+    }
+
+    const polaroidSlot = e.target.closest('.polaroid-slot');
+    if (polaroidSlot) {
+      if (polaroidDragJustEnded) return;
+      const slotKey = polaroidSlot.dataset.slotKey;
+      if (!slotKey) return;
+      if (pagePhotos.has(slotKey)) {
+        triggerPagePhotoInput(slotKey);
+      } else {
+        const scene = parseInt(slotKey.split('_')[1]);
+        triggerPolaroidMultiInput(scene);
+      }
+      return;
+    }
+
     // Candidate thumbnail click
     const candidateThumb = e.target.closest('.candidate-thumb');
     if (candidateThumb) {
@@ -1735,6 +2272,71 @@ function setupCoverEvents() {
       setStep(0);
       return;
     }
+  });
+
+  // Desktop polaroid drag (mouse events)
+  let mousePolSlot = null;
+  let mousePolContainer = null;
+  let mousePolStartX = 0;
+  let mousePolStartY = 0;
+  let mousePolStartDx = 0;
+  let mousePolStartDy = 0;
+  let mousePolDragging = false;
+
+  document.addEventListener('mousedown', (e) => {
+    const slot = e.target.closest('.polaroid-slot');
+    if (!slot || !slot.dataset.slotKey) return;
+    const slotKey = slot.dataset.slotKey;
+    const existing = polaroidOffsets.get(slotKey) || { dx: 0, dy: 0 };
+    mousePolSlot = slot;
+    mousePolContainer = slot.closest('.polaroid-container');
+    mousePolStartX = e.clientX;
+    mousePolStartY = e.clientY;
+    mousePolStartDx = existing.dx;
+    mousePolStartDy = existing.dy;
+    mousePolDragging = false;
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!mousePolSlot) return;
+    const dx = e.clientX - mousePolStartX;
+    const dy = e.clientY - mousePolStartY;
+    if (!mousePolDragging && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
+      mousePolDragging = true;
+      mousePolSlot.style.transition = 'none';
+      mousePolSlot.style.zIndex = '10';
+    }
+    if (mousePolDragging) {
+      e.preventDefault();
+      const containerRect = mousePolContainer.getBoundingClientRect();
+      const pctDx = (dx / containerRect.width) * 100;
+      const pctDy = (dy / containerRect.height) * 100;
+      const origX = parseFloat(mousePolSlot.dataset.origX);
+      const origY = parseFloat(mousePolSlot.dataset.origY);
+      mousePolSlot.style.left = `${origX + mousePolStartDx + pctDx}%`;
+      mousePolSlot.style.top = `${origY + mousePolStartDy + pctDy}%`;
+      mousePolSlot._tempDx = mousePolStartDx + pctDx;
+      mousePolSlot._tempDy = mousePolStartDy + pctDy;
+    }
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (!mousePolSlot) return;
+    if (mousePolDragging) {
+      const slotKey = mousePolSlot.dataset.slotKey;
+      if (mousePolSlot._tempDx != null) {
+        polaroidOffsets.set(slotKey, { dx: mousePolSlot._tempDx, dy: mousePolSlot._tempDy });
+        delete mousePolSlot._tempDx;
+        delete mousePolSlot._tempDy;
+      }
+      mousePolSlot.style.transition = '';
+      mousePolSlot.style.zIndex = '';
+      polaroidDragJustEnded = true;
+      setTimeout(() => { polaroidDragJustEnded = false; }, 300);
+    }
+    mousePolSlot = null;
+    mousePolContainer = null;
+    mousePolDragging = false;
   });
 }
 
@@ -1781,6 +2383,7 @@ document.addEventListener('DOMContentLoaded', () => {
   cacheDom();
   setupEvents();
   setupCoverEvents();
+  initFramePhotoDrag();
   loadConfig();
   window.addEventListener('resize', () => {
     const vw = els.pageViewer.clientWidth;

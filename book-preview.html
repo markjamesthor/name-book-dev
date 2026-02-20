@@ -882,6 +882,148 @@
     padding: 20px;
   }
 
+  /* ===== Baby Frame (Page 1) ===== */
+  .baby-frame-wrap {
+    position: absolute;
+    z-index: 0;
+    cursor: pointer;
+  }
+  .baby-frame {
+    width: 100%; height: 100%;
+    background: linear-gradient(145deg, #d4a84b, #f5e6b8, #c9963a, #f5e6b8, #a67c00);
+    padding: 3.5%;
+    box-shadow:
+      0 6px 24px rgba(0,0,0,0.5),
+      inset 0 1px 3px rgba(255,255,255,0.3);
+    border-radius: 2px;
+  }
+  .baby-frame-none {
+    background: none;
+    padding: 0;
+    box-shadow: none;
+    border-radius: 0;
+  }
+  .baby-frame-none .baby-frame-inner {
+    background: transparent;
+  }
+  .baby-frame-none .baby-frame-empty {
+    background: transparent;
+  }
+  .baby-frame-inner {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: #1a1a2e;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .baby-frame-inner img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+  }
+  .baby-frame-photo {
+    width: 100%; height: 100%;
+    background-repeat: no-repeat;
+  }
+  .frame-wrap-empty {
+    z-index: 3 !important;
+  }
+  .baby-frame-empty {
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%; height: 100%;
+  }
+  .baby-frame-empty .frame-plus {
+    font-size: 36px;
+    font-weight: 200;
+    line-height: 1;
+    text-shadow: 0 0 10px rgba(255,255,255,0.8), 0 2px 6px rgba(0,0,0,0.6);
+  }
+  /* Frame page: illustration behind pointer so clicks reach baby-frame-wrap (z-index:0) */
+  .slide-frame .page-bg-img {
+    pointer-events: none;
+  }
+
+  /* ===== Polaroid Album (Page 17) ===== */
+  .polaroid-container {
+    position: absolute; inset: 0;
+    z-index: 3;
+  }
+  .polaroid-slot {
+    position: absolute;
+    cursor: pointer;
+    transition: transform 0.2s;
+  }
+  .polaroid-slot:active {
+    z-index: 10;
+  }
+  .polaroid-card {
+    width: 100%; height: 100%;
+    background: #fff;
+    padding: 5% 5% 18% 5%;
+    box-shadow: 0 3px 12px rgba(0,0,0,0.35);
+    border-radius: 2px;
+  }
+  .polaroid-card img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+  }
+  .polaroid-empty {
+    width: 100%; height: 100%;
+    border: 2px dashed rgba(0,0,0,0.2);
+    display: flex; align-items: center; justify-content: center;
+    color: rgba(0,0,0,0.3);
+    font-size: 28px;
+    background: #f5f5f0;
+  }
+
+  /* Polaroid hint */
+  .polaroid-hint {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(0,0,0,0.65);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    color: rgba(255,255,255,0.9);
+    font-size: 12px;
+    padding: 8px 12px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .frame-page-hint {
+    position: absolute;
+    bottom: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    color: rgba(255,255,255,0.9);
+    font-size: 12px;
+    padding: 8px 12px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .polaroid-hint-close, .frame-page-hint-close {
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.6);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 2px;
+  }
+
   /* ===== MOBILE (max-width: 768px) ===== */
   @media (max-width: 768px) {
     body { height: 100dvh; }
@@ -912,6 +1054,18 @@
       justify-content: center;
     }
     .slide-cover .slide-img-wrap {
+      flex: 1;
+      min-height: 0;
+      max-height: none;
+    }
+    /* Frame page: image area takes most space, text at bottom */
+    .slide-frame .slide-img-wrap {
+      flex: 1;
+      min-height: 0;
+      max-height: none;
+    }
+    /* Polaroid page: full area, no text */
+    .slide-polaroid .slide-img-wrap {
       flex: 1;
       min-height: 0;
       max-height: none;
