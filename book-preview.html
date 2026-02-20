@@ -34,18 +34,105 @@
   .top-bar {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: center;
     padding: 8px 16px;
     background: #6c5ce7;
     flex-shrink: 0;
+    position: relative;
   }
-  .top-bar h1 {
+  .top-bar-right {
+    display: flex; align-items: center; gap: 8px;
+    position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+  }
+  .guide-btn {
+    background: #fff;
+    border: none;
+    border-radius: 8px;
+    color: #6c5ce7;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 7px 16px;
+    cursor: pointer;
+    letter-spacing: 0.2px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  }
+  .guide-btn:active { background: #f0eef9; }
+
+  /* Bottom Sheet */
+  .guide-modal {
+    position: fixed; inset: 0;
+    z-index: 9999;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(12px);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+  .guide-modal.active {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+  }
+  .guide-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid #eee;
+    flex-shrink: 0;
+  }
+  .guide-modal-header h2 {
+    font-size: 16px;
+    font-weight: 700;
+    color: #222;
+  }
+  .guide-modal-close {
+    background: #f0f0f0; border: none;
+    font-size: 18px; color: #666;
+    cursor: pointer;
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    line-height: 1;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .guide-modal-close:active { background: #ddd; }
+  .guide-modal-body {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 0 20px 32px;
+    font-size: 14px;
+    line-height: 1.8;
+    color: #333;
+  }
+  .guide-modal-body h3 {
     font-size: 15px;
     font-weight: 700;
-    color: #fff;
-    letter-spacing: 0.3px;
+    color: #6c5ce7;
+    margin: 20px 0 8px;
   }
-  .top-bar-right { display: flex; align-items: center; gap: 8px; }
+  .guide-modal-body hr {
+    border: none;
+    border-top: 1px solid #eee;
+    margin: 16px 0;
+  }
+  .guide-modal-body p {
+    margin: 8px 0;
+  }
+  .guide-modal-body ul {
+    padding-left: 18px;
+    margin: 8px 0;
+  }
+  .guide-modal-body li {
+    margin: 6px 0;
+  }
+  .guide-modal-body strong {
+    color: #222;
+  }
   .removebg-toggle {
     display: flex;
     align-items: center;
@@ -111,7 +198,7 @@
   .page-viewer-wrap {
     position: relative;
     width: 100%;
-    max-width: 750px;
+    max-width: 480px;
     flex: 1;
     min-height: 200px;
   }
@@ -1024,136 +1111,127 @@
     padding: 0 2px;
   }
 
-  /* ===== MOBILE (max-width: 768px) ===== */
-  @media (max-width: 768px) {
-    body { height: 100dvh; }
-    .top-bar { padding: 6px 12px; }
-    .top-bar h1 { font-size: 14px; }
+  /* ===== Mobile-first (모든 화면에서 모바일 레이아웃) ===== */
+  body { height: 100dvh; }
+  .top-bar { padding: 6px 12px; }
+  .top-bar h1 { font-size: 14px; }
 
-    .preview-area { padding: 4px 0 2px; }
-    .page-viewer-wrap { max-width: 100%; }
-    .carousel-slide { border-radius: 10px; box-shadow: none; }
+  .preview-area { padding: 4px 0 2px; }
+  .carousel-slide { border-radius: 10px; box-shadow: none; }
 
-    .carousel-slide {
-      display: flex;
-      flex-direction: column;
-    }
-    .carousel-slide + .carousel-slide {
-      border-left: none;
-    }
-    .slide-img-wrap {
-      position: relative;
-      flex: none;
-      min-height: 50%;
-      max-height: 65%;
-      overflow: hidden;
-    }
-
-    /* Cover: full-height centered with blur background */
-    .slide-cover {
-      justify-content: center;
-    }
-    .slide-cover .slide-img-wrap {
-      flex: 1;
-      min-height: 0;
-      max-height: none;
-    }
-    /* Frame page: image area takes most space, text at bottom */
-    .slide-frame .slide-img-wrap {
-      flex: 1;
-      min-height: 0;
-      max-height: none;
-    }
-    /* Polaroid page: full area, no text */
-    .slide-polaroid .slide-img-wrap {
-      flex: 1;
-      min-height: 0;
-      max-height: none;
-    }
-    .page-bg-blur {
-      display: block;
-      position: absolute;
-      top: -40px; left: -40px; right: -40px; bottom: -40px;
-      background-size: cover;
-      background-position: center;
-      filter: blur(50px) brightness(0.45) saturate(1.3);
-      transform: scale(1.15);
-      z-index: 0;
-    }
-    .slide-img-wrap .page-bg-img {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      display: block;
-      z-index: 1;
-    }
-
-    .carousel-slide .page-text-overlay {
-      position: relative;
-      top: auto; bottom: auto;
-      transform: none;
-      flex: 1;
-      min-height: 0;
-      background: rgba(20, 20, 30, 0.85);
-      overflow: hidden;
-    }
-    .carousel-slide .page-text-overlay::before {
-      content: '';
-      position: absolute;
-      inset: -40px;
-      background-image: var(--page-bg-url);
-      background-size: cover;
-      background-position: center;
-      filter: blur(40px) brightness(0.35) saturate(1.3);
-      z-index: 0;
-      pointer-events: none;
-    }
-    .page-text-scroll {
-      position: relative;
-      z-index: 1;
-      height: 100%;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-      padding: 14px 20px;
-    }
-    .page-text-overlay { padding: 16px 20px; }
-    .page-story-text {
-      font-size: 15px;
-      line-height: 2.0;
-      text-shadow: 0 1px 4px rgba(0,0,0,0.6);
-      color: rgba(255,255,255,0.95);
-      position: relative;
-      z-index: 1;
-    }
-
-    .page-counter-bar { font-size: 12px; padding: 4px 0 0; }
-
-    .cover-top-title { padding: 28px 16px 12px; }
-    .cover-top-title-text { font-size: 22px; }
-    .cover-title { font-size: 22px; }
-    .cover-subtitle { font-size: 12px; }
-    .cover-photo-zone { width: 140px; height: 170px; }
-
-    .thumb { width: 56px; height: 44px; border-radius: 6px; }
-    #thumbnail-strip { gap: 6px; }
-
-    .input-group input { font-size: 16px; }
+  .carousel-slide {
+    display: flex;
+    flex-direction: column;
+  }
+  .carousel-slide + .carousel-slide {
+    border-left: none;
+  }
+  .slide-img-wrap {
+    position: relative;
+    flex: none;
+    min-height: 50%;
+    max-height: 65%;
+    overflow: hidden;
   }
 
-  /* ===== Desktop (min-width: 769px) ===== */
+  /* Cover: full-height centered with blur background */
+  .slide-cover {
+    justify-content: center;
+  }
+  .slide-cover .slide-img-wrap {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+  }
+  /* Frame page: image area takes most space, text at bottom */
+  .slide-frame .slide-img-wrap {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+  }
+  /* Polaroid page: full area, no text */
+  .slide-polaroid .slide-img-wrap {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+  }
+  .page-bg-blur {
+    display: block;
+    position: absolute;
+    top: -40px; left: -40px; right: -40px; bottom: -40px;
+    background-size: cover;
+    background-position: center;
+    filter: blur(50px) brightness(0.45) saturate(1.3);
+    transform: scale(1.15);
+    z-index: 0;
+  }
+  .slide-img-wrap .page-bg-img {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    z-index: 1;
+  }
+
+  .carousel-slide .page-text-overlay {
+    position: relative;
+    top: auto; bottom: auto;
+    transform: none;
+    flex: 1;
+    min-height: 0;
+    background: rgba(20, 20, 30, 0.85);
+    overflow: hidden;
+  }
+  .carousel-slide .page-text-overlay::before {
+    content: '';
+    position: absolute;
+    inset: -40px;
+    background-image: var(--page-bg-url);
+    background-size: cover;
+    background-position: center;
+    filter: blur(40px) brightness(0.35) saturate(1.3);
+    z-index: 0;
+    pointer-events: none;
+  }
+  .page-text-scroll {
+    position: relative;
+    z-index: 1;
+    height: 100%;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 14px 20px;
+  }
+  .page-text-overlay { padding: 16px 20px; }
+  .page-story-text {
+    font-size: 15px;
+    line-height: 2.0;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.6);
+    color: rgba(255,255,255,0.95);
+    position: relative;
+    z-index: 1;
+  }
+
+  .page-counter-bar { font-size: 12px; padding: 4px 0 0; }
+
+  .cover-top-title { padding: 28px 16px 12px; }
+  .cover-top-title-text { font-size: 22px; }
+  .cover-title { font-size: 22px; }
+  .cover-subtitle { font-size: 12px; }
+  .cover-photo-zone { width: 140px; height: 170px; }
+
+  .thumb { width: 56px; height: 44px; border-radius: 6px; }
+  #thumbnail-strip { gap: 6px; }
+
+  .input-group input { font-size: 16px; }
+
+  /* ===== Desktop: 센터링 + 배경색 + 모바일 폭 유지 ===== */
   @media (min-width: 769px) {
     body { align-items: center; background: #e8e8e8; }
     .top-bar, .preview-area, .step-bar, .bottom-panel, .page-counter-bar {
       max-width: 480px;
       width: 100%;
-    }
-    .top-bar { border-radius: 0 0 16px 16px; }
-    .page-viewer-wrap {
-      aspect-ratio: 250 / 200;
-      max-height: calc(100vh - 300px);
-      flex: none;
     }
   }
 </style>
@@ -1163,13 +1241,22 @@
 
 <!-- Top Bar -->
 <div class="top-bar">
-  <h1>노미네 왕국</h1>
+  <button class="guide-btn" id="guide-btn">부모님을 위한 스토리텔링 가이드</button>
   <div class="top-bar-right">
     <button class="removebg-toggle" id="removebg-toggle" aria-label="remove.bg 토글">
-      <span>remove.bg</span>
+      <span>rb</span>
       <span class="toggle-switch"></span>
     </button>
   </div>
+</div>
+
+<!-- Guide Fullscreen Modal -->
+<div class="guide-modal" id="guide-modal">
+  <div class="guide-modal-header">
+    <h2>스토리텔링 가이드</h2>
+    <button class="guide-modal-close" id="guide-modal-close">&times;</button>
+  </div>
+  <div class="guide-modal-body" id="guide-modal-body"></div>
 </div>
 
 <!-- Preview Area -->

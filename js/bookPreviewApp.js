@@ -1611,6 +1611,107 @@ function setupCarouselTouch(track) {
       track.style.transform = `translateX(-${viewerWidth}px)`;
     }
   }, { passive: true });
+
+  // ===== Mouse events for desktop carousel swipe =====
+  let mouseDown = false;
+  track.addEventListener('mousedown', (e) => {
+    if (isAnimating || zoomScale > 1) return;
+    mouseDown = true;
+    normalizeTrackIfNeeded();
+    startX = e.clientX;
+    startY = e.clientY;
+    startTime = Date.now();
+    isDragging = false;
+    deltaX = 0;
+    track.style.transition = 'none';
+    e.preventDefault();
+  });
+
+  track.addEventListener('mousemove', (e) => {
+    if (!mouseDown || isAnimating) return;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+
+    if (!isDragging) {
+      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 8) {
+        isDragging = true;
+      } else if (Math.abs(dy) > Math.abs(dx) && Math.abs(dy) > 8) {
+        mouseDown = false;
+        return;
+      } else {
+        return;
+      }
+    }
+
+    deltaX = dx;
+    const viewerWidth = els.pageViewer.clientWidth;
+    const pages = getPages();
+
+    let adjustedDx = deltaX;
+    if (currentPageIndex === 0 && deltaX > 0) adjustedDx = deltaX * 0.25;
+    if (currentPageIndex === pages.length - 1 && deltaX < 0) adjustedDx = deltaX * 0.25;
+
+    const baseOffset = -viewerWidth;
+    track.style.transform = `translateX(${baseOffset + adjustedDx}px)`;
+  });
+
+  const mouseEndHandler = () => {
+    if (!mouseDown) return;
+    mouseDown = false;
+    if (!isDragging || isAnimating) return;
+
+    const viewerWidth = els.pageViewer.clientWidth;
+    const pages = getPages();
+    const velocity = Math.abs(deltaX) / (Date.now() - startTime);
+    const threshold = viewerWidth * 0.2;
+    const fastSwipe = velocity > 0.4;
+
+    track.style.transition = 'transform 0.3s ease-out';
+
+    if ((deltaX < -threshold || (fastSwipe && deltaX < -30)) && currentPageIndex < pages.length - 1) {
+      isAnimating = true;
+      track.style.transform = `translateX(-${viewerWidth * 2}px)`;
+
+      let fin1 = false;
+      const finalize = () => {
+        if (fin1) return;
+        fin1 = true;
+        currentPageIndex++;
+        pendingNormalize = { direction: 1 };
+        normalizeTrackIfNeeded();
+        updatePageInfo();
+        positionCoverChild();
+        isAnimating = false;
+        onPageChanged();
+      };
+      track.addEventListener('transitionend', finalize, { once: true });
+      setTimeout(() => { if (!fin1) finalize(); }, 350);
+
+    } else if ((deltaX > threshold || (fastSwipe && deltaX > 30)) && currentPageIndex > 0) {
+      isAnimating = true;
+      track.style.transform = 'translateX(0px)';
+
+      let fin2 = false;
+      const finalize = () => {
+        if (fin2) return;
+        fin2 = true;
+        currentPageIndex--;
+        pendingNormalize = { direction: -1 };
+        normalizeTrackIfNeeded();
+        updatePageInfo();
+        positionCoverChild();
+        isAnimating = false;
+        onPageChanged();
+      };
+      track.addEventListener('transitionend', finalize, { once: true });
+      setTimeout(() => { if (!fin2) finalize(); }, 350);
+
+    } else {
+      track.style.transform = `translateX(-${viewerWidth}px)`;
+    }
+  };
+  track.addEventListener('mouseup', mouseEndHandler);
+  track.addEventListener('mouseleave', mouseEndHandler);
 }
 
 // ========== Thumbnails ==========
@@ -2379,11 +2480,61 @@ function setupEvents() {
 
 // ========== Init ==========
 
+// ========== Guide Bottom Sheet ==========
+
+function simpleMarkdownToHtml(md) {
+  return md
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^---$/gm, '<hr>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/^\* \*(.+?)\*$/gm, '<li><em>$1</em></li>')
+    .replace(/^\* (.+)$/gm, '<li>$1</li>')
+    .replace(/(<li>[\s\S]*?<\/li>)/g, (m) => m)
+    .replace(/((?:<li>.*<\/li>\n?)+)/g, '<ul>$1</ul>')
+    .split('\n\n')
+    .map(block => {
+      block = block.trim();
+      if (!block || block.startsWith('<h3>') || block.startsWith('<hr') || block.startsWith('<ul>')) return block;
+      return `<p>${block}</p>`;
+    })
+    .join('\n');
+}
+
+function initGuideModal() {
+  const btn = document.getElementById('guide-btn');
+  const modal = document.getElementById('guide-modal');
+  const closeBtn = document.getElementById('guide-modal-close');
+  const body = document.getElementById('guide-modal-body');
+  if (!btn || !modal) return;
+
+  let loaded = false;
+
+  btn.addEventListener('click', () => {
+    if (!loaded) {
+      fetch('NAME/guide.md')
+        .then(r => r.text())
+        .then(md => {
+          body.innerHTML = simpleMarkdownToHtml(md);
+          loaded = true;
+        });
+    }
+    modal.classList.add('active');
+    document.body.style.overflow = 'hidden';
+  });
+
+  closeBtn.addEventListener('click', () => {
+    modal.classList.remove('active');
+    document.body.style.overflow = '';
+  });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   cacheDom();
   setupEvents();
   setupCoverEvents();
   initFramePhotoDrag();
+  initGuideModal();
   loadConfig();
   window.addEventListener('resize', () => {
     const vw = els.pageViewer.clientWidth;
