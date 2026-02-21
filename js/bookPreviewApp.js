@@ -2252,7 +2252,7 @@ function toggleRemoveBg(enabled) {
   if (enabled && coverPhotoOptions && !coverPhotoOptions['removebg'] && coverCroppedFile) {
     const fd = new FormData();
     fd.append('file', coverCroppedFile);
-    fetch(`${SMART_CROP_API}/remove-bg?model=removebg`, { method: 'POST', body: fd })
+    fetchWithTimeout(`${SMART_CROP_API}/remove-bg?model=removebg`, { method: 'POST', body: fd })
       .then(async (resp) => {
         if (!resp.ok) return;
         const blob = await resp.blob();
