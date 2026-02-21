@@ -202,8 +202,9 @@ function getPages() {
 }
 
 function padImageToRef(blob, cropX, cropY, refW, refH) {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const img = new Image();
+    const blobUrl = URL.createObjectURL(blob);
     img.onload = () => {
       const canvas = document.createElement('canvas');
       canvas.width = refW;
@@ -211,11 +212,12 @@ function padImageToRef(blob, cropX, cropY, refW, refH) {
       const ctx = canvas.getContext('2d');
       ctx.drawImage(img, cropX, cropY);
       canvas.toBlob(b => {
-        URL.revokeObjectURL(img.src);
+        URL.revokeObjectURL(blobUrl);
         resolve(URL.createObjectURL(b));
       }, 'image/webp', 0.9);
     };
-    img.src = URL.createObjectURL(blob);
+    img.onerror = () => { URL.revokeObjectURL(blobUrl); reject(new Error('padImageToRef 이미지 로드 실패')); };
+    img.src = blobUrl;
   });
 }
 
@@ -811,10 +813,12 @@ function triggerPagePhotoInput(slotKey) {
   input.accept = 'image/*';
   input.style.display = 'none';
   document.body.appendChild(input);
+  const cleanup = () => input.remove();
   input.addEventListener('change', () => {
     if (input.files.length > 0) handlePagePhotoUpload(slotKey, input.files[0]);
-    input.remove();
+    cleanup();
   });
+  input.addEventListener('cancel', cleanup);
   input.click();
 }
 
@@ -908,6 +912,7 @@ function triggerPolaroidMultiInput(scene) {
   input.multiple = true;
   input.style.display = 'none';
   document.body.appendChild(input);
+  const cleanup = () => input.remove();
   input.addEventListener('change', () => {
     const files = Array.from(input.files).slice(0, emptyKeys.length);
     files.forEach((file, i) => {
@@ -918,8 +923,9 @@ function triggerPolaroidMultiInput(scene) {
       renderCarousel();
       renderThumbnails();
     }
-    input.remove();
+    cleanup();
   });
+  input.addEventListener('cancel', cleanup);
   input.click();
 }
 
@@ -1809,7 +1815,9 @@ async function smartCropPerson(file) {
 function cropImageOnCanvas(file, coords) {
   return new Promise((resolve, reject) => {
     const img = new Image();
+    const blobUrl = URL.createObjectURL(file);
     img.onload = () => {
+      URL.revokeObjectURL(blobUrl);
       const canvas = document.createElement('canvas');
       canvas.width = coords.width;
       canvas.height = coords.height;
@@ -1820,8 +1828,8 @@ function cropImageOnCanvas(file, coords) {
         else reject(new Error('크롭 Blob 생성 실패'));
       }, 'image/jpeg', 0.95);
     };
-    img.onerror = reject;
-    img.src = URL.createObjectURL(file);
+    img.onerror = () => { URL.revokeObjectURL(blobUrl); reject(new Error('이미지 로드 실패')); };
+    img.src = blobUrl;
   });
 }
 
@@ -2567,7 +2575,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const vw = els.pageViewer.clientWidth;
     const track = document.getElementById('carousel-track');
     if (track) {
-      for (const slide of track.children) slide.style.width = `${vw}px`;
+      const slideGap = 8;
+      for (const slide of track.children) slide.style.width = `${vw - slideGap}px`;
       track.style.transition = 'none';
       track.style.transform = `translateX(-${vw}px)`;
     }
