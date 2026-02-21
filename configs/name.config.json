@@ -45,7 +45,7 @@
           "text": "우리 {name}가 아주아주 작았을 때, 새근새근 쿨쿨 잠만 잤을 때 일어난 신비한 이야기야.",
           "frameStyle": "none",
           "frame": {
-            "x": 58.13, "y": 53, "width": 11.74, "height": 20,
+            "x": 58.5, "y": 41, "width": 10, "height": 11,
             "rotation": 0
           }
         },
@@ -229,7 +229,7 @@
           "text": "이 이야기는 {name}가 아주 어렸을 때 일어난,\n우리 가족만의 놀라운 비밀 이야기란다.",
           "frameStyle": "none",
           "frame": {
-            "x": 58.13, "y": 53, "width": 11.74, "height": 20,
+            "x": 58.5, "y": 41, "width": 10, "height": 11,
             "rotation": 0
           }
         },
