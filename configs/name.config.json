@@ -25,6 +25,7 @@
     "light_gate": "NAME/u9138982156_extreme_wide_shot_seen_from_behind_two_tiny_figures_ba9a564a-e227-478e-8326-257632210b2e.webp",
     "castle_frames": "NAME/u9138982156_technical_flat_front_elevation_view_perfectly_strai_5f847c61-c36d-499c-8cec-331b46d0fbce.webp",
     "giant_tears": "NAME/giant_tears.webp",
+    "baby_cradle": "NAME/baby_cradle.webp",
     "blank": "NAME/blank.png"
   },
   "versions": {
@@ -57,7 +58,7 @@
         {
           "scene": 2,
           "title": "도현이의 탄생",
-          "illustration": "castle",
+          "illustration": "baby_cradle",
           "textColor": "white",
           "textPosition": "top",
           "text": "어느 날, \"응애응애!\"\n예쁜 아기가 태어났어.\n온 동네 사람들이 와글와글, 짝짝짝!\n손뼉을 치며 기뻐했지."
@@ -233,7 +234,7 @@
         {
           "scene": 2,
           "title": "도현이의 탄생",
-          "illustration": "castle",
+          "illustration": "baby_cradle",
           "textColor": "white",
           "textPosition": "top",
           "text": "어느 날, 왕과 왕비에게\n아주 예쁜 아기가 태어났어.\n온 나라가 축제를 열고 춤을 추었어."
