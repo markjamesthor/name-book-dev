@@ -1240,6 +1240,95 @@
     }
   }
 
+  /* ===== Print Tab (Step 3) ===== */
+  .print-checklist {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .print-check-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: #f8f8f8;
+    border-radius: 10px;
+    font-size: 13px;
+    color: #555;
+    transition: background 0.2s;
+  }
+  .print-check-item.passed {
+    background: #f0faf0;
+    color: #2d8a4e;
+  }
+  .print-check-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 2px solid #ccc;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 12px;
+    color: transparent;
+    transition: all 0.2s;
+  }
+  .print-check-item.passed .print-check-icon {
+    border-color: #2d8a4e;
+    background: #2d8a4e;
+    color: #fff;
+  }
+  .print-btn {
+    width: 100%;
+    padding: 14px 20px;
+    border: none;
+    border-radius: 12px;
+    background: #ccc;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: not-allowed;
+    transition: background 0.2s, transform 0.1s;
+  }
+  .print-btn.ready {
+    background: #6c5ce7;
+    cursor: pointer;
+  }
+  .print-btn.ready:active {
+    transform: scale(0.98);
+  }
+  .print-status {
+    text-align: center;
+    padding: 20px 16px;
+  }
+  .print-status-icon {
+    font-size: 48px;
+    margin-bottom: 12px;
+  }
+  .print-status-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #1a1a1a;
+    margin-bottom: 6px;
+  }
+  .print-status-desc {
+    font-size: 13px;
+    color: #888;
+    line-height: 1.5;
+  }
+  .print-spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid rgba(108,92,231,0.15);
+    border-top-color: #6c5ce7;
+    border-radius: 50%;
+    animation: cover-spin 0.8s linear infinite;
+    margin: 0 auto 12px;
+  }
+
   /* ===== Maintenance Overlay ===== */
   .maintenance-overlay {
     display: none;
@@ -1350,6 +1439,9 @@
   <div class="step-tab" data-step="2">
     <span class="step-num">03</span> 스토리 설정
   </div>
+  <div class="step-tab" data-step="3">
+    <span class="step-num">04</span> 인쇄
+  </div>
 </div>
 
 <!-- Bottom Panel -->
@@ -1362,6 +1454,11 @@
   <!-- Step 1: 페이지 -->
   <div class="step-content step-content-thumbs" id="step-content-1">
     <div id="thumbnail-strip"></div>
+  </div>
+
+  <!-- Step 3: 인쇄 -->
+  <div class="step-content" id="step-content-3">
+    <div id="print-controls"></div>
   </div>
 </div>
 

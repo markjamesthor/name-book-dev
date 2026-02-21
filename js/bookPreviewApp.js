@@ -112,7 +112,7 @@ function cacheDom() {
 // ========== Step System ==========
 
 function setStep(step) {
-  // Step 2 = story sheet overlay
+  // Step 2 = story sheet overlay (바텀시트)
   if (step === 2) {
     openStorySheet();
     return;
@@ -125,6 +125,7 @@ function setStep(step) {
     content.classList.toggle('active', content.id === `step-content-${step}`);
   });
   if (step === 0) renderCoverControls();
+  if (step === 3) renderPrintControls();
 }
 
 function openStorySheet() {
@@ -2447,6 +2448,12 @@ function setupCoverEvents() {
       setStep(0);
       return;
     }
+    // Print request button
+    if (e.target.closest('#print-request-btn')) {
+      const btn = e.target.closest('#print-request-btn');
+      if (!btn.disabled) requestPrint();
+      return;
+    }
   });
 
   // Desktop polaroid drag (mouse events)
@@ -2601,6 +2608,120 @@ function initGuideModal() {
     modal.classList.remove('active');
     document.body.style.overflow = '';
   });
+}
+
+// ========== Print Tab (Step 3) ==========
+
+let printRequestState = 'idle'; // idle | loading | success | error
+
+function renderPrintControls() {
+  const container = document.getElementById('print-controls');
+  if (!container) return;
+
+  // 이미 요청 완료 상태
+  if (printRequestState === 'success') {
+    container.innerHTML = `
+      <div class="print-status">
+        <div class="print-status-icon">&#10003;</div>
+        <div class="print-status-title">인쇄 요청이 접수되었습니다</div>
+        <div class="print-status-desc">담당자가 확인 후 인쇄를 진행합니다.<br>진행 상황은 알림톡으로 안내드릴게요.</div>
+      </div>`;
+    return;
+  }
+
+  if (printRequestState === 'loading') {
+    container.innerHTML = `
+      <div class="print-status">
+        <div class="print-spinner"></div>
+        <div class="print-status-desc">인쇄 요청을 전송 중입니다...</div>
+      </div>`;
+    return;
+  }
+
+  // 체크리스트 항목
+  const checks = [
+    {
+      id: 'photo',
+      label: '아이 사진 선택 완료',
+      passed: !!coverPhotoURL
+    },
+    {
+      id: 'name',
+      label: '아이 이름 입력 완료',
+      passed: !!(els.firstNameInput && els.firstNameInput.value.trim())
+    },
+    {
+      id: 'version',
+      label: '스토리 버전 선택 완료',
+      passed: !!currentVersion
+    }
+  ];
+
+  const allPassed = checks.every(c => c.passed);
+
+  const checklistHtml = checks.map(c => `
+    <div class="print-check-item${c.passed ? ' passed' : ''}">
+      <div class="print-check-icon">${c.passed ? '&#10003;' : ''}</div>
+      <span>${c.label}</span>
+    </div>
+  `).join('');
+
+  container.innerHTML = `
+    <div class="print-checklist">${checklistHtml}</div>
+    <button class="print-btn${allPassed ? ' ready' : ''}" id="print-request-btn"
+      ${allPassed ? '' : 'disabled'}>
+      ${allPassed ? '인쇄 요청하기' : '위 항목을 모두 완료해주세요'}
+    </button>`;
+}
+
+async function requestPrint() {
+  if (printRequestState === 'loading') return;
+
+  const firstName = els.firstNameInput.value.trim();
+  const parentNames = els.parentNamesInput.value.trim();
+
+  if (!firstName || !coverPhotoURL) return;
+
+  printRequestState = 'loading';
+  renderPrintControls();
+
+  try {
+    const body = {
+      firstName,
+      parentNames,
+      version: currentVersion,
+      bookId: `book_${Date.now()}`,
+      timestamp: new Date().toISOString()
+    };
+
+    const resp = await fetchWithTimeout(`${SMART_CROP_API}/request-print`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+    printRequestState = 'success';
+  } catch (e) {
+    console.error('인쇄 요청 실패:', e);
+    printRequestState = 'error';
+  }
+
+  renderPrintControls();
+
+  if (printRequestState === 'error') {
+    const container = document.getElementById('print-controls');
+    if (container) {
+      container.innerHTML = `
+        <div class="print-status">
+          <div class="print-status-icon" style="color:#e74c3c;">!</div>
+          <div class="print-status-title">요청 실패</div>
+          <div class="print-status-desc">네트워크 오류가 발생했습니다. 다시 시도해주세요.</div>
+          <button class="print-btn ready" onclick="printRequestState='idle';renderPrintControls();" style="margin-top:12px;">다시 시도</button>
+        </div>`;
+    }
+  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
