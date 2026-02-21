@@ -60,6 +60,7 @@ let isAnimating = false;
 let coverPhotoURL = null;
 let isRemovingBg = false;
 let coverLoadingText = '';
+let coverErrorText = '';
 let coverCropData = null;
 let coverPhotoOptions = null;
 let selectedModelKey = null;
@@ -341,6 +342,16 @@ function buildCoverContent() {
     </div>`;
 
     return `<div class="slide-img-wrap" data-layout="cover">${imgContent}${titleHtml}</div>${toggleHtml}`;
+  }
+
+  // Error state — retry button
+  if (coverErrorText) {
+    return `
+      <div class="slide-img-wrap" data-layout="cover">${imgContent}${titleHtml}</div>
+      <div class="cover-layout"><div class="cover-loading">
+        <div class="cover-error-text">${coverErrorText}</div>
+        <button class="cover-retry-btn" onclick="retryCoverProcessing()">다시 시도</button>
+      </div></div>`;
   }
 
   // Loading state — spinner in carousel
@@ -1801,10 +1812,19 @@ const SMART_CROP_API = location.hostname.includes('github.io')
   ? 'https://ai.monviestory.co.kr'
   : 'http://59.10.238.17:5001';
 
+const FETCH_TIMEOUT_MS = 60000;
+
+function fetchWithTimeout(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal })
+    .finally(() => clearTimeout(timer));
+}
+
 async function smartCropPerson(file) {
   const formData = new FormData();
   formData.append('file', file);
-  const resp = await fetch(`${SMART_CROP_API}/smart-crop?crop_mode=person&seg_size=512`, {
+  const resp = await fetchWithTimeout(`${SMART_CROP_API}/smart-crop?crop_mode=person&seg_size=512`, {
     method: 'POST',
     body: formData
   });
@@ -1902,6 +1922,7 @@ function syncCandidateToGlobals(c) {
   coverCroppedFile = c.croppedFile;
   isRemovingBg = c.isProcessing;
   coverLoadingText = c.loadingText;
+  coverErrorText = c.errorText || '';
 }
 
 function saveGlobalsToActiveCandidate() {
@@ -1938,6 +1959,7 @@ async function processCandidate(candidate) {
   };
 
   candidate.isProcessing = true;
+  candidate.errorText = '';
   candidate.loadingText = '인물을 감지하는 중...';
   syncAndRender();
 
@@ -1962,7 +1984,8 @@ async function processCandidate(candidate) {
         }
       }
     } catch (e) {
-      console.warn('스마트 크롭 스킵:', e.message);
+      const detail = e.name === 'AbortError' ? '타임아웃 (60초)' : e.message;
+      console.warn(`스마트 크롭 스킵: ${detail} (파일: ${candidate.originalFile.name}, 크기: ${(candidate.originalFile.size/1024).toFixed(0)}KB)`);
     }
 
     candidate.croppedFile = fileToSend;
@@ -2071,10 +2094,11 @@ async function processCandidate(candidate) {
     const promises = sorted.map(m => {
       const fd = new FormData();
       fd.append('file', fileToSend);
-      return fetch(`${SMART_CROP_API}/remove-bg?model=${m.key}`, { method: 'POST', body: fd })
+      return fetchWithTimeout(`${SMART_CROP_API}/remove-bg?model=${m.key}`, { method: 'POST', body: fd })
         .then(r => extractAndApply(r, m.key))
         .catch(e => {
-          console.warn(`[${m.key}] fetch 실패:`, e.message);
+          const detail = e.name === 'AbortError' ? '타임아웃 (60초)' : e.message;
+          console.warn(`[${m.key}] fetch 실패: ${detail} (파일: ${fileToSend.name}, 크기: ${(fileToSend.size/1024).toFixed(0)}KB)`);
           candidate.failedModels.add(m.key);
           syncAndRender();
         });
@@ -2087,6 +2111,10 @@ async function processCandidate(candidate) {
     }
   } catch (e) {
     console.error('배경 제거 실패:', e);
+    const isTimeout = e.name === 'AbortError';
+    candidate.errorText = isTimeout
+      ? '서버 응답 시간이 초과되었습니다'
+      : '사진 처리에 실패했습니다';
   } finally {
     candidate.isProcessing = false;
     candidate.loadingText = '';
@@ -2153,6 +2181,17 @@ async function handleCoverPhotos(files) {
   // Enqueue all at once so the first batch picks up 3
   newCandidates.forEach(c => processingQueue.push(c));
   if (!isProcessingQueue) runProcessingQueue();
+}
+
+function retryCoverProcessing() {
+  const candidate = coverCandidates[activeCandidateIndex];
+  if (!candidate) return;
+  candidate.errorText = '';
+  candidate.photoOptions = {};
+  candidate.photoURL = null;
+  candidate.selectedModelKey = null;
+  syncCandidateToGlobals(candidate);
+  enqueueCandidate(candidate);
 }
 
 function showToggleToast(msg) {
