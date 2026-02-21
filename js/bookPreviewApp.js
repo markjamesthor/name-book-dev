@@ -196,7 +196,7 @@ function getPages() {
     scene: '커버',
     title: '커버',
     isCover: true,
-    illustration: 'golden_star'
+    illustration: 'cover_bg'
   };
   return [coverPage, ...config.versions[currentVersion].pages];
 }
@@ -282,7 +282,7 @@ function computeChildPosition() {
 
 // Build cover visual only (no controls — those go to renderCoverControls)
 function buildCoverContent() {
-  const bgPath = config.illustrations['golden_star'];
+  const bgPath = config.illustrations['cover_bg'];
   const coverTitle = `내 이름은 왜 ${variables.firstName}이야?`;
   const titleStyle = getCoverTitleStyle();
   const titleHtml = `<div class="cover-top-title"${titleStyle ? ` style="${titleStyle}"` : ''}><div class="cover-top-title-text">${coverTitle}</div></div>`;
@@ -290,7 +290,7 @@ function buildCoverContent() {
   const frontStyle = getCoverLayoutStyle();
   let imgContent = `<div class="page-bg-blur" style="background-image:url('${bgPath}')"></div>
     <img class="page-bg-img" src="${bgPath}" alt="커버" style="object-fit:contain;object-position:center;" />
-    <div class="cover-front-wrap"${frontStyle ? ` style="${frontStyle}"` : ''}><img class="cover-front-img" src="NAME/cover_front.png" /></div>`;
+    <div class="cover-front-wrap"${frontStyle ? ` style="${frontStyle}"` : ''}><img class="cover-front-img" src="NAME/cover_front_3.webp" /></div>`;
 
   // Child photo displayed
   const selectedOpt = selectedModelKey && coverPhotoOptions && coverPhotoOptions[selectedModelKey];
@@ -338,13 +338,13 @@ function buildCoverContent() {
       <div class="model-toggle-hint">숫자를 눌러 배경이 가장 잘 지워진 사진을 골라주세요</div>
     </div>`;
 
-    return `<div class="slide-img-wrap">${imgContent}${titleHtml}</div>${toggleHtml}`;
+    return `<div class="slide-img-wrap" data-layout="cover">${imgContent}${titleHtml}</div>${toggleHtml}`;
   }
 
   // Loading state — spinner in carousel
   if (isRemovingBg) {
     return `
-      <div class="slide-img-wrap">${imgContent}${titleHtml}</div>
+      <div class="slide-img-wrap" data-layout="cover">${imgContent}${titleHtml}</div>
       <div class="cover-layout"><div class="cover-loading">
         <div class="cover-spinner"></div>
         <div class="cover-loading-text">${coverLoadingText || '처리 중...'}</div>
@@ -353,7 +353,7 @@ function buildCoverContent() {
 
   // No photo — hint to use 사진 tab
   return `
-    <div class="slide-img-wrap">${imgContent}${titleHtml}</div>
+    <div class="slide-img-wrap" data-layout="cover">${imgContent}${titleHtml}</div>
 `;
 }
 
@@ -471,7 +471,7 @@ function buildSlideContent(pageIndex) {
   if (page.illustration && config.illustrations[page.illustration]) {
     imgPath = config.illustrations[page.illustration];
     imgContent = `<div class="page-bg-blur" style="background-image:url('${imgPath}')"></div>
-      <img class="page-bg-img" src="${imgPath}" alt="${page.title}" style="object-fit:cover;object-position:top center;" />`;
+      <img class="page-bg-img" src="${imgPath}" alt="${page.title}" style="object-fit:cover;object-position:center;" />`;
   } else if (page.bgGradient) {
     imgContent = `<div class="page-bg-gradient" style="background:${page.bgGradient}"></div>`;
   }
@@ -502,7 +502,7 @@ function buildFrameContent(pageIndex) {
   if (page.illustration && config.illustrations[page.illustration]) {
     imgPath = config.illustrations[page.illustration];
     imgContent = `<div class="page-bg-blur" style="background-image:url('${imgPath}')"></div>
-      <img class="page-bg-img" src="${imgPath}" alt="${page.title}" style="object-fit:cover;object-position:top center;" />`;
+      <img class="page-bg-img" src="${imgPath}" alt="${page.title}" style="object-fit:cover;object-position:center;" />`;
   }
 
   const frame = page.frame || { x: 32, y: 10, width: 36, height: 52, rotation: 0 };
@@ -539,7 +539,7 @@ function buildFrameContent(pageIndex) {
   const bgVar = imgPath ? `--page-bg-url:url('${imgPath}');` : '';
 
   return `
-    <div class="slide-img-wrap">${imgContent}${frameHtml}</div>
+    <div class="slide-img-wrap" data-layout="frame">${imgContent}${frameHtml}</div>
     <div class="page-text-overlay ${posClass}" style="${bgVar}color:${textColor}">
       <div class="page-text-scroll">
         <div class="page-story-text">${text.replace(/\n/g, '<br>')}</div>
@@ -673,7 +673,7 @@ function buildPolaroidContent(pageIndex) {
     </div>`;
 
   return `
-    <div class="slide-img-wrap">${bgContent}<div class="polaroid-container">${slotsHtml}</div>${hintHtml}</div>`;
+    <div class="slide-img-wrap" data-layout="polaroid">${bgContent}<div class="polaroid-container">${slotsHtml}</div>${hintHtml}</div>`;
 }
 
 // ========== Page Photo Upload ==========
@@ -708,43 +708,90 @@ async function detectAndCropForFrame(slotKey, file) {
     const imgW = data.image_width;
     const imgH = data.image_height;
 
-    // 코(0)=얼굴 중심, 어깨(11,12)=상반신 하단
     const nose = kps[0];
     const lShoulder = kps[11];
     const rShoulder = kps[12];
     if (nose.score < 0.3) return;
 
-    // 얼굴 상단 추정 (귀 위치 활용)
-    const lEar = kps[7];
-    const rEar = kps[8];
-    let faceTop = nose.y;
-    if (lEar.score > 0.3) faceTop = Math.min(faceTop, lEar.y);
-    if (rEar.score > 0.3) faceTop = Math.min(faceTop, rEar.y);
-    const faceHeight = (nose.y - faceTop) * 2.5;
-    const headTop = Math.max(0, nose.y - faceHeight);
-
-    // 어깨 위치
+    // --- 어깨 위치 ---
     let shoulderY = nose.y;
     if (lShoulder.score > 0.3) shoulderY = Math.max(shoulderY, lShoulder.y);
     if (rShoulder.score > 0.3) shoulderY = Math.max(shoulderY, rShoulder.y);
+    // 어깨 미감지 fallback: 코 아래로 이미지 높이의 15% 추정
+    if (shoulderY <= nose.y) shoulderY = Math.min(imgH, nose.y + imgH * 0.15);
 
-    // 상반신 영역 (머리 위 ~ 어깨 아래)
-    const regionTop = headTop;
-    const regionBottom = shoulderY;
-    const regionH = regionBottom - regionTop;
+    let shoulderW = 0;
+    if (lShoulder.score > 0.3 && rShoulder.score > 0.3) {
+      shoulderW = Math.abs(rShoulder.x - lShoulder.x);
+    }
 
-    // background-size: 상반신이 프레임 높이의 ~70%를 차지하도록 확대
+    // --- 머리 상단 추정 ---
+    const lEar = kps[7];
+    const rEar = kps[8];
+    let headTop;
+    if (lEar.score > 0.3 || rEar.score > 0.3) {
+      // 귀 감지: 코-귀 거리 × 2.5 = 머리 전체 높이 추정
+      let earTop = nose.y;
+      if (lEar.score > 0.3) earTop = Math.min(earTop, lEar.y);
+      if (rEar.score > 0.3) earTop = Math.min(earTop, rEar.y);
+      headTop = Math.max(0, nose.y - (nose.y - earTop) * 2.5);
+    } else {
+      // 귀 미감지 fallback: 어깨 너비의 70% 또는 코-어깨 거리의 1.5배
+      const headSize = shoulderW > 0
+        ? shoulderW * 0.7
+        : (shoulderY - nose.y) * 1.5;
+      headTop = Math.max(0, nose.y - Math.max(headSize, imgH * 0.08));
+    }
+
+    // --- 상반신 영역 & 줌 계산 ---
+    const regionH = Math.max(1, shoulderY - headTop);
     const regionPct = (regionH / imgH) * 100;
-    const bgSizePct = Math.round(Math.max(150, Math.min(220, 55 / regionPct * 100)));
+    // 상반신이 프레임 높이의 ~65%를 차지하도록 확대
+    const bgSizePct = Math.round(Math.max(140, Math.min(250, 65 / regionPct * 100)));
+    const yZoom = bgSizePct / 100;
 
-    // background-position
-    const bgX = Math.round(Math.max(0, Math.min(100, (nose.x / imgW) * 100)));
-    // Y: 직접 얼굴 % 위치 기반으로 설정
-    // 이미지에서 얼굴이 위에 있을수록 bgY를 작게 (상단 표시)
-    const faceYpct = (nose.y / imgH) * 100;
-    const bgY = Math.round(Math.max(0, Math.min(100, faceYpct * 0.3)));
+    // --- 얼굴 영역 중심 (이미지 내 0~1 비율) ---
+    // 머리 쪽으로 약간 치우침 (45:55)
+    const faceCenterY = ((headTop + shoulderY) * 0.45) / imgH;
+    const faceCenterX = nose.x / imgW;
 
-    console.log(`[Frame] ViTPose: face=${(nose.y/imgH*100).toFixed(0)}%, headTop=${(headTop/imgH*100).toFixed(0)}%, shoulder=${(shoulderY/imgH*100).toFixed(0)}%, region=${regionPct.toFixed(0)}% → bg: ${bgX}% ${bgY}% / auto ${bgSizePct}%`);
+    // --- background-position 계산 ---
+    // CSS 공식: bgPct = (target - center × zoom) / (1 - zoom) × 100
+    // target = 프레임 내 원하는 위치 (0~1)
+
+    // Y: 얼굴을 프레임 상단 38% 위치에 배치
+    let bgY = (0.38 - faceCenterY * yZoom) / (1 - yZoom) * 100;
+    bgY = Math.round(Math.max(0, Math.min(100, bgY)));
+
+    // X: 프레임 AR 산출 → X zoom 계산 → 얼굴을 프레임 중앙에 배치
+    let xZoom = yZoom;
+    const scene = parseInt(slotKey.split('_')[1], 10);
+    const framePage = getPages().find(p => p.scene === scene && p.pageType === 'frame');
+    if (framePage?.frame && framePage.illustration) {
+      // 일러스트 원본 치수에서 프레임 컨테이너 AR 계산
+      let natW, natH;
+      const bgImgEl = document.querySelector('.page-bg-img');
+      if (bgImgEl?.naturalWidth) {
+        natW = bgImgEl.naturalWidth;
+        natH = bgImgEl.naturalHeight;
+      } else {
+        const path = config.illustrations[framePage.illustration];
+        if (path) {
+          const tmp = new Image(); tmp.src = path;
+          if (!tmp.naturalWidth) await new Promise(r => { tmp.onload = r; tmp.onerror = r; });
+          natW = tmp.naturalWidth; natH = tmp.naturalHeight;
+        }
+      }
+      if (natW && natH) {
+        // frameAR = 프레임 실제 가로/세로 비율
+        const frameAR = (framePage.frame.width * natW) / (framePage.frame.height * natH);
+        xZoom = yZoom * (imgW / imgH) / frameAR;
+      }
+    }
+    let bgX = (0.50 - faceCenterX * xZoom) / (1 - xZoom) * 100;
+    bgX = Math.round(Math.max(0, Math.min(100, bgX)));
+
+    console.log(`[Frame] face=(${(faceCenterX*100).toFixed(0)}%,${(faceCenterY*100).toFixed(0)}%), region=${regionPct.toFixed(0)}%, zoom=Y${yZoom.toFixed(1)}/X${xZoom.toFixed(1)} → bg: ${bgX}% ${bgY}% / auto ${bgSizePct}%`);
 
     const entry = pagePhotos.get(slotKey);
     if (entry) {
@@ -982,12 +1029,6 @@ function renderCarousel() {
     slide.style.marginRight = `${slideGap / 2}px`;
     const pageIdx = currentPageIndex + i;
     slide.dataset.pageIndex = String(pageIdx);
-    const pages = getPages();
-    if (pageIdx >= 0 && pageIdx < pages.length) {
-      if (pages[pageIdx].isCover) slide.classList.add('slide-cover');
-      if (pages[pageIdx].pageType === 'frame') slide.classList.add('slide-frame');
-      if (pages[pageIdx].pageType === 'polaroid_album') slide.classList.add('slide-polaroid');
-    }
     slide.innerHTML = buildSlideContent(pageIdx);
     track.appendChild(slide);
   }
@@ -1005,15 +1046,10 @@ function renderCarousel() {
 function populateSlides() {
   const track = document.getElementById('carousel-track');
   if (!track) return;
-  const pages = getPages();
   const slides = track.children;
   for (let i = 0; i < 3; i++) {
     const pageIdx = currentPageIndex + (i - 1);
     slides[i].dataset.pageIndex = String(pageIdx);
-    const inRange = pageIdx >= 0 && pageIdx < pages.length;
-    slides[i].classList.toggle('slide-cover', inRange && pages[pageIdx].isCover);
-    slides[i].classList.toggle('slide-frame', inRange && pages[pageIdx].pageType === 'frame');
-    slides[i].classList.toggle('slide-polaroid', inRange && pages[pageIdx].pageType === 'polaroid_album');
     slides[i].innerHTML = buildSlideContent(pageIdx);
   }
   positionCoverChild();
@@ -1031,26 +1067,17 @@ function normalizeTrackIfNeeded() {
   if (!track) return;
   const vw = els.pageViewer.clientWidth;
 
-  const pages = getPages();
-  const applySlideClasses = (el, idx) => {
-    const inRange = idx >= 0 && idx < pages.length;
-    el.classList.toggle('slide-cover', inRange && pages[idx].isCover);
-    el.classList.toggle('slide-frame', inRange && pages[idx].pageType === 'frame');
-    el.classList.toggle('slide-polaroid', inRange && pages[idx].pageType === 'polaroid_album');
-  };
   if (direction > 0) {
     const first = track.firstElementChild;
     track.appendChild(first);
     const newPageIdx = currentPageIndex + 1;
     first.dataset.pageIndex = String(newPageIdx);
-    applySlideClasses(first, newPageIdx);
     first.innerHTML = buildSlideContent(newPageIdx);
   } else {
     const last = track.lastElementChild;
     track.insertBefore(last, track.firstElementChild);
     const newPageIdx = currentPageIndex - 1;
     last.dataset.pageIndex = String(newPageIdx);
-    applySlideClasses(last, newPageIdx);
     last.innerHTML = buildSlideContent(newPageIdx);
   }
 
@@ -1729,7 +1756,7 @@ function renderThumbnails() {
     thumb.className = `thumb ${i === currentPageIndex ? 'active' : ''}`;
 
     if (page.isCover) {
-      const coverBg = config.illustrations['golden_star'];
+      const coverBg = config.illustrations['cover_bg'];
       thumb.innerHTML = `<img src="${coverBg}" alt="커버" /><div class="thumb-cover">커버</div>`;
     } else if (page.illustration && config.illustrations[page.illustration]) {
       const imgPath = config.illustrations[page.illustration];

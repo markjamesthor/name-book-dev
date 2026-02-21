@@ -17,12 +17,14 @@
     "ancient_stair": "NAME/u9138982156_a_king_and_queen_halfway_down_a_massive_ancient_spi_87c4ba28-0707-4240-875f-436f24e37351-34.webp",
     "magic_book": "NAME/u9138982156_close-up_of_an_enormous_ancient_magical_book_open_o_ca011c0b-c85a-4131-b96e-5a5153f8a94b.webp",
     "forest_run_queen": "NAME/u9138982156_birds_eye_view_looking_straight_down_a_queen_with_b_cbdf5715-9da2-4614-adda-42d279947615.webp",
+    "cover_bg": "NAME/cover_3.webp",
     "golden_star": "NAME/u9138982156_a_gigantic_magnificent_golden_star_high_in_the_dark_53b47130-fffa-4126-97c5-2c54ed734fee.webp",
     "elephant": "NAME/u9138982156_Dark_textured_indigo_forest_background_--ar_32_--v__11ef44ea-9991-4e9d-b47e-fcd7e1b3e7b4.webp",
     "elephant_close": "NAME/u9138982156_glowing_magical_forest_ground_soft_cyan_light_on_th_6a7eea50-0216-4af6-8bf7-a22fbd23ad41.webp",
     "cauldron": "NAME/u9138982156_A_whimsical_storybook_illustration_of_a_rustic_anci_22f1727d-5a21-4005-adbe-d49bb773279c.webp",
     "light_gate": "NAME/u9138982156_extreme_wide_shot_seen_from_behind_two_tiny_figures_ba9a564a-e227-478e-8326-257632210b2e.webp",
     "castle_frames": "NAME/u9138982156_technical_flat_front_elevation_view_perfectly_strai_5f847c61-c36d-499c-8cec-331b46d0fbce.webp",
+    "giant_tears": "NAME/giant_tears.webp",
     "blank": "NAME/blank.png"
   },
   "versions": {
@@ -119,7 +121,7 @@
         {
           "scene": 10,
           "title": "세 번째 재료: 거인의 눈물",
-          "illustration": "blank",
+          "illustration": "giant_tears",
           "textColor": "white",
           "textPosition": "center",
           "text": "마지막은 산처럼 큰 숲속 거인이었어.\n거인의 눈에서 따뜻한 눈물이 뚝, 뚝.\n바닥에 또르르 구르더니 반짝이는 보석이 되었어.\n만세! 재료를 다 모았어!"
@@ -295,7 +297,7 @@
         {
           "scene": 10,
           "title": "세 번째 재료: 거인의 눈물",
-          "illustration": "blank",
+          "illustration": "giant_tears",
           "textColor": "white",
           "textPosition": "center",
           "text": "마지막으로 숲을 지키는 외로운 거인을 만났어.\n거인은 {parentNames}의 사랑에 감동해 맑은 눈물을 뚝뚝 흘렸어.\n눈물은 바닥에 떨어져 보석이 되었지.\n\"우리 아이가 다른 사람의 아픔을 안아주는\n따뜻한 마음을 갖게 해주세요.\""

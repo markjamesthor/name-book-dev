@@ -1027,7 +1027,7 @@
     text-shadow: 0 0 10px rgba(255,255,255,0.8), 0 2px 6px rgba(0,0,0,0.6);
   }
   /* Frame page: illustration behind pointer so clicks reach baby-frame-wrap (z-index:0) */
-  .slide-frame .page-bg-img {
+  .slide-img-wrap[data-layout="frame"] .page-bg-img {
     pointer-events: none;
   }
 
@@ -1134,23 +1134,9 @@
     overflow: hidden;
   }
 
-  /* Cover: full-height centered with blur background */
-  .slide-cover {
-    justify-content: center;
-  }
-  .slide-cover .slide-img-wrap {
-    flex: 1;
-    min-height: 0;
-    max-height: none;
-  }
-  /* Frame page: image area takes most space, text at bottom */
-  .slide-frame .slide-img-wrap {
-    flex: 1;
-    min-height: 0;
-    max-height: none;
-  }
-  /* Polaroid page: full area, no text */
-  .slide-polaroid .slide-img-wrap {
+  /* Cover / Polaroid: full-height image area (no text overlay sibling) */
+  .slide-img-wrap[data-layout="cover"],
+  .slide-img-wrap[data-layout="polaroid"] {
     flex: 1;
     min-height: 0;
     max-height: none;
@@ -1234,10 +1220,75 @@
       width: 100%;
     }
   }
+
+  /* ===== Maintenance Overlay ===== */
+  .maintenance-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    background: rgba(0, 0, 0, 0.45);
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+    gap: 20px;
+  }
+  .maintenance-overlay.active {
+    display: flex;
+  }
+  .maintenance-icon {
+    width: 56px;
+    height: 56px;
+    border: 3px solid rgba(255,255,255,0.8);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: maintenance-pulse 2s ease-in-out infinite;
+  }
+  .maintenance-icon svg {
+    width: 28px;
+    height: 28px;
+    fill: rgba(255,255,255,0.9);
+  }
+  .maintenance-text {
+    color: #fff;
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-align: center;
+    line-height: 1.6;
+  }
+  .maintenance-sub {
+    color: rgba(255,255,255,0.6);
+    font-size: 13px;
+    text-align: center;
+  }
+  @keyframes maintenance-pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.08); opacity: 0.8; }
+  }
 </style>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;700&display=swap" rel="stylesheet">
 </head>
 <body>
+
+<!-- Maintenance Overlay -->
+<div class="maintenance-overlay" id="maintenance-overlay">
+  <div class="maintenance-icon">
+    <svg viewBox="0 0 24 24"><path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/></svg>
+  </div>
+  <div class="maintenance-text">서버 안정화 작업 중입니다</div>
+  <div class="maintenance-sub">언제 종료될 지 궁금하면 이 앱 제작자에게 직접 물어보세요.</div>
+</div>
+<script>
+  // ?maintenance=true 파라미터로 유지보수 모드 활성화
+  if (new URLSearchParams(location.search).get('maintenance') === 'true') {
+    document.getElementById('maintenance-overlay').classList.add('active');
+  }
+</script>
 
 <!-- Top Bar -->
 <div class="top-bar">
