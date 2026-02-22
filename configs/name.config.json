@@ -29,6 +29,7 @@
     "festival_town": "NAME/festival_town.webp",
     "festival_feast": "NAME/festival_feast.webp",
     "shadow_chase": "NAME/shadow_chase.webp",
+    "shadow_appear": "NAME/shadow_appear.webp",
     "blank": "NAME/blank.png"
   },
   "versions": {
@@ -85,7 +86,7 @@
         {
           "scene": 5,
           "title": "그림자의 습격",
-          "illustration": "shadow_attack",
+          "illustration": "shadow_appear",
           "textColor": "white",
           "textPosition": "bottom",
           "text": "그때, 쿵! 쿵!\n심술꾸러기 그림자 괴물이 나타났어. 으르렁!\n\"이름 없는 아기는 내가 데려간다!\"\n{parentNames}는 아기를 꽉 안았어.\n\"안 돼! 우리가 꼭 예쁜 이름을 찾아올 거야!\""
@@ -277,7 +278,7 @@
         {
           "scene": 5,
           "title": "그림자의 습격",
-          "illustration": "shadow_attack",
+          "illustration": "shadow_appear",
           "textColor": "white",
           "textPosition": "bottom",
           "text": "그때, 땅이 흔들리며\n발밑에 그림자가 없는 무시무시한 괴물이 나타났어!\n\"이름 없는 아이는 내가 데려가겠다!\"\n괴물의 차가운 목소리에 {parentNames}는 가슴이 철렁 내려앉았어.\n\"절대 안 돼! 일주일만 시간을 줘.\n우리가 꼭 아이의 이름을 찾아오겠어!\""
