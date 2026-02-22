@@ -30,6 +30,7 @@
     "festival_feast": "NAME/festival_feast.webp",
     "shadow_chase": "NAME/shadow_chase.webp",
     "shadow_appear": "NAME/shadow_appear.webp",
+    "lost_wand": "NAME/lost_wand.webp",
     "blank": "NAME/blank.png"
   },
   "versions": {
@@ -174,7 +175,7 @@
         {
           "scene": 16,
           "title": "잃어버린 지팡이",
-          "illustration": "blank",
+          "illustration": "lost_wand",
           "textColor": "white",
           "textPosition": "center",
           "text": "가족이 문 안으로 쏙 들어가자마자,\n아빠가 얍! 지팡이를 휘둘러 괴물을 쫓아냈어.\n그런데 앗, 지팡이가 문밖으로 툭 떨어져 버렸네?\n빛의 문은 쪼그라들더니 퐁! 사라졌어."
@@ -366,7 +367,7 @@
         {
           "scene": 16,
           "title": "잃어버린 지팡이",
-          "illustration": "blank",
+          "illustration": "lost_wand",
           "textColor": "white",
           "textPosition": "center",
           "text": "문 안으로 뛰어드는 순간,\n괴물이 끝까지 쫓아왔어!\n아빠는 가족을 지키기 위해\n요술 지팡이를 힘껏 던져 괴물을 물리쳤지.\n쾅! 번쩍하는 빛과 함께 괴물은 튕겨 나갔지만,\n요술 지팡이는 그만 문밖으로 떨어지고 말았어.\n굳게 닫힌 문은 이제 다시는 열리지 않게 되었지."
