@@ -31,6 +31,7 @@
     "shadow_chase": "NAME/shadow_chase.webp",
     "shadow_appear": "NAME/shadow_appear.webp",
     "lost_wand": "NAME/lost_wand.webp",
+    "our_secret": "NAME/our_secret.webp",
     "blank": "NAME/blank.png"
   },
   "versions": {
@@ -183,7 +184,7 @@
         {
           "scene": 17,
           "title": "우리의 비밀",
-          "illustration": "blank",
+          "illustration": "our_secret",
           "textColor": "white",
           "textPosition": "center",
           "text": "짜잔~ 여기는 우리가 사는 세상이야.\n요술 지팡이는 잃어버렸지만\n{parentNames}는 하나도 슬프지 않아.\n반짝반짝 빛나는 '{name}'가 우리 곁에 있으니까.\n{firstName}아, 네가 우리의 가장 큰 마법이란다.\n사랑해!"
@@ -375,7 +376,7 @@
         {
           "scene": 17,
           "title": "우리의 비밀",
-          "illustration": "blank",
+          "illustration": "our_secret",
           "textColor": "white",
           "textPosition": "center",
           "text": "이곳이 바로 우리가 사는 세상이야.\n{parentNames}는 왕국과 지팡이를 모두 잃어버렸어.\n하지만 매일매일 세상을 다 가진 것처럼 행복하단다.\n무한한 잠재력을 가진 네가,\n우리의 사랑 속에서 '{firstName}'이라는 이름으로\n눈부시게 꽃피우고 있으니까.\n{firstName}아, 네가 바로 세상에서 가장 강력하고\n아름다운 마법이란다."
