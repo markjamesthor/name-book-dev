@@ -325,6 +325,11 @@ function buildCoverContent() {
     <img class="page-bg-img" src="${bgPath}" alt="커버" />
     <div class="cover-front-wrap"${frontStyle ? ` style="${frontStyle}"` : ''}><img class="cover-front-img" src="NAME/cover_front_3.webp" /></div>`;
 
+  // Common blur overlay setup
+  const blurTextMap = config.illustrationsBlurText || {};
+  const blurTextPath = blurTextMap['cover_bg'] || bgPath;
+  const bgVar = blurTextPath ? `--page-bg-url:url('${blurTextPath}');` : '';
+
   // Child photo displayed
   const selectedOpt = selectedModelKey && coverPhotoOptions && coverPhotoOptions[selectedModelKey];
   if (selectedOpt && coverPhotoURL) {
@@ -348,59 +353,59 @@ function buildCoverContent() {
     }
     if (pendingNudge) pendingNudge = false;
 
-    // Model toggle inside the card
-    let toggleHtml;
-    {
-      const activeCandidate = coverCandidates[activeCandidateIndex];
-      const failedSet = activeCandidate && activeCandidate.failedModels || new Set();
-      let activeIdx = 0;
-      const NON_GPU = ['removebg'];
-      const isExt = (p) => p.steps.every(s => NON_GPU.includes(s.type) || s.type === 'crop');
-      const visiblePipelines = COVER_PIPELINES.filter(p => !(isExt(p) && !useRemoveBg));
-      const toggleOpts = visiblePipelines.map((p, idx) => {
-        const loaded = !!coverPhotoOptions[p.key];
-        const failed = failedSet.has(p.key);
-        const active = selectedModelKey === p.key;
-        let cls = 'model-toggle-option';
-        if (active) { cls += ' active'; activeIdx = idx; }
-        if (failed) cls += ' model-toggle-failed';
-        else if (!loaded) cls += ' model-toggle-loading';
-        return `<div class="${cls}" data-model="${p.key}" data-idx="${idx}">${p.label}</div>`;
-      }).join('');
-      const indicatorHtml = `<div class="model-toggle-indicator" style="transform:translateX(${activeIdx * 46}px)"></div>`;
-      toggleHtml = `<div class="cover-model-overlay">
+    // Model toggle in blur overlay
+    const activeCandidate = coverCandidates[activeCandidateIndex];
+    const failedSet = activeCandidate && activeCandidate.failedModels || new Set();
+    let activeIdx = 0;
+    const NON_GPU = ['removebg'];
+    const isExt = (p) => p.steps.every(s => NON_GPU.includes(s.type) || s.type === 'crop');
+    const visiblePipelines = COVER_PIPELINES.filter(p => !(isExt(p) && !useRemoveBg));
+    const toggleOpts = visiblePipelines.map((p, idx) => {
+      const loaded = !!coverPhotoOptions[p.key];
+      const failed = failedSet.has(p.key);
+      const active = selectedModelKey === p.key;
+      let cls = 'model-toggle-option';
+      if (active) { cls += ' active'; activeIdx = idx; }
+      if (failed) cls += ' model-toggle-failed';
+      else if (!loaded) cls += ' model-toggle-loading';
+      return `<div class="${cls}" data-model="${p.key}" data-idx="${idx}">${p.label}</div>`;
+    }).join('');
+    const indicatorHtml = `<div class="model-toggle-indicator" style="transform:translateX(${activeIdx * 46}px)"></div>`;
+
+    return `<div class="slide-img-wrap">${imgContent}${titleHtml}</div>
+    <div class="page-text-overlay text-pos-center" style="${bgVar}color:white">
+      <div class="cover-model-overlay">
         <div class="model-toggle model-toggle-large">${indicatorHtml}${toggleOpts}</div>
         <div class="model-toggle-hint">숫자를 눌러 배경이 가장 잘 지워진 사진을 골라주세요</div>
-      </div>`;
-    }
-
-    return `<div class="slide-img-wrap" data-layout="cover">${imgContent}${titleHtml}</div>${toggleHtml}`;
+      </div>
+    </div>`;
   }
 
-  // Error state — retry button
+  // Error state
   if (coverErrorText) {
     return `
-      <div class="slide-img-wrap" data-layout="cover">${imgContent}${titleHtml}</div>
-      <div class="cover-layout"><div class="cover-loading">
-        <div class="cover-error-text">${coverErrorText}</div>
-        <button class="cover-retry-btn" onclick="retryCoverProcessing()">다시 시도</button>
-      </div></div>`;
+      <div class="slide-img-wrap">${imgContent}${titleHtml}</div>
+      <div class="page-text-overlay text-pos-center" style="${bgVar}color:white">
+        <div class="page-text-scroll">
+          <div class="cover-error-text">${coverErrorText}</div>
+          <button class="cover-retry-btn" onclick="retryCoverProcessing()">다시 시도</button>
+        </div>
+      </div>`;
   }
 
-  // Loading state — spinner in carousel
+  // Loading state
   if (isRemovingBg) {
     return `
-      <div class="slide-img-wrap" data-layout="cover">${imgContent}${titleHtml}</div>
-      <div class="cover-layout"><div class="cover-loading">
-        <div class="cover-spinner"></div>
-        <div class="cover-loading-text">${coverLoadingText || '처리 중...'}</div>
-      </div></div>`;
+      <div class="slide-img-wrap">${imgContent}${titleHtml}</div>
+      <div class="page-text-overlay text-pos-center" style="${bgVar}color:white">
+        <div class="page-text-scroll">
+          <div class="cover-spinner"></div>
+          <div class="cover-loading-text">${coverLoadingText || '처리 중...'}</div>
+        </div>
+      </div>`;
   }
 
-  // No photo — show intro text with blur overlay (same layout as story pages)
-  const blurTextMap = config.illustrationsBlurText || {};
-  const blurTextPath = blurTextMap['cover_bg'] || bgPath;
-  const bgVar = blurTextPath ? `--page-bg-url:url('${blurTextPath}');` : '';
+  // No photo — intro text
   return `
     <div class="slide-img-wrap">${imgContent}${titleHtml}</div>
     <div class="page-text-overlay text-pos-center" style="${bgVar}color:white">
