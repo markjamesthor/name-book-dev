@@ -133,6 +133,7 @@
   .guide-modal-body strong {
     color: #222;
   }
+  /* ===== remove.bg Toggle ===== */
   .removebg-toggle {
     display: flex;
     align-items: center;
@@ -183,6 +184,61 @@
     opacity: 1;
   }
 
+  /* ===== Person Selection Modal ===== */
+  .person-selection-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: rgba(0,0,0,0.85);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 20px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s;
+  }
+  .person-selection-modal.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .person-selection-modal h3 {
+    color: #fff;
+    font-size: 16px;
+    font-weight: 600;
+    margin: 0 0 4px;
+    text-align: center;
+  }
+  .person-selection-modal canvas {
+    border-radius: 8px;
+    max-width: 100%;
+  }
+  .person-selection-buttons {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .person-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 18px;
+    border: 2px solid #666;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.1);
+    color: #fff;
+    font-size: 15px;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+  }
+  .person-btn:active {
+    transform: scale(0.95);
+    background: rgba(255,255,255,0.2);
+  }
+
   /* ===== Preview Area ===== */
   .preview-area {
     flex: 1;
@@ -226,6 +282,7 @@
   .carousel-track {
     display: flex;
     height: 100%;
+    will-change: transform;
   }
   .carousel-slide {
     height: 100%;
@@ -430,6 +487,85 @@
     color: #e74c3c;
     white-space: nowrap;
   }
+  .thumb-wrap:has(.thumb-delete) { position: relative; }
+  .thumb-delete {
+    position: absolute;
+    top: -6px; right: -6px;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: #e74c3c;
+    color: #fff;
+    border: 2px solid #fff;
+    font-size: 11px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    padding: 0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+  .thumb-delete:hover { background: #c0392b; }
+  .thumb-add {
+    width: 72px; height: 56px;
+    border-radius: 8px;
+    border: 2px dashed #ccc;
+    background: #f8f8f8;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  .thumb-add:hover { border-color: #6c5ce7; background: #f0eeff; }
+  .thumb-add svg { width: 20px; height: 20px; color: #aaa; }
+  .thumb-add:hover svg { color: #6c5ce7; }
+
+  /* Album frame picker modal */
+  .album-picker-backdrop {
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(0,0,0,0.5);
+    display: none;
+  }
+  .album-picker-backdrop.open { display: block; }
+  .album-picker-sheet {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 101;
+    background: #fff;
+    border-radius: 16px 16px 0 0;
+    padding: 0 20px 20px;
+    padding-bottom: max(20px, env(safe-area-inset-bottom));
+    transform: translateY(100%);
+    transition: transform 0.3s ease-out;
+  }
+  .album-picker-backdrop.open .album-picker-sheet { transform: translateY(0); }
+  .album-picker-handle {
+    width: 36px; height: 4px;
+    background: #ddd; border-radius: 2px;
+    margin: 10px auto 14px;
+  }
+  .album-picker-title {
+    text-align: center;
+    font-size: 14px; color: #666;
+    margin-bottom: 12px;
+  }
+  .album-picker-options {
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .album-picker-opt {
+    background: #f5f5f5;
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    padding: 14px;
+    font-size: 14px; font-weight: 500;
+    color: #333;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: center;
+  }
+  .album-picker-opt:hover { background: #ede8ff; border-color: #6c5ce7; }
+  .album-picker-opt:active { transform: scale(0.98); }
 
   /* Step 2: Photo controls */
   .step-content-photo.active {
@@ -533,7 +669,6 @@
   }
   .cover-child-img {
     position: absolute;
-    filter: drop-shadow(0 4px 24px rgba(0,0,0,0.6));
     -webkit-touch-callout: none;
     -webkit-user-select: none;
     user-select: none;
@@ -658,7 +793,8 @@
   }
   .cover-loading-text {
     font-size: 13px;
-    color: #888;
+    color: #fff;
+    font-weight: bold;
   }
   .cover-error-text {
     font-size: 13px;
@@ -726,6 +862,11 @@
     padding: 12px 16px 14px;
     background: linear-gradient(0deg, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.35) 70%, transparent 100%);
     z-index: 20;
+    pointer-events: none;
+  }
+  .cover-model-overlay .model-toggle,
+  .cover-model-overlay .model-toggle-hint {
+    pointer-events: auto;
   }
   .cover-model-overlay .model-toggle-hint {
     color: rgba(255,255,255,0.75);
@@ -988,103 +1129,78 @@
     padding: 20px;
   }
 
-  /* ===== Baby Frame (Page 1) ===== */
-  .baby-frame-wrap {
-    position: absolute;
-    z-index: 0;
+  /* ===== Frame Page (Page 1) — uses album-style rendering ===== */
+  .frame-page-zone {
     cursor: pointer;
   }
-  .baby-frame {
-    width: 100%; height: 100%;
-    background: linear-gradient(145deg, #d4a84b, #f5e6b8, #c9963a, #f5e6b8, #a67c00);
-    padding: 3.5%;
-    box-shadow:
-      0 6px 24px rgba(0,0,0,0.5),
-      inset 0 1px 3px rgba(255,255,255,0.3);
-    border-radius: 2px;
-  }
-  .baby-frame-none {
-    background: none;
-    padding: 0;
-    box-shadow: none;
-    border-radius: 0;
-  }
-  .baby-frame-none .baby-frame-inner {
-    background: transparent;
-  }
-  .baby-frame-none .baby-frame-empty {
-    background: transparent;
-  }
-  .baby-frame-inner {
-    width: 100%; height: 100%;
-    overflow: hidden;
-    background: #1a1a2e;
-    display: flex; align-items: center; justify-content: center;
-  }
-  .baby-frame-inner img {
-    width: 100%; height: 100%;
-    object-fit: cover;
-  }
-  .baby-frame-photo {
-    width: 100%; height: 100%;
-    background-repeat: no-repeat;
-  }
-  .frame-wrap-empty {
-    z-index: 3 !important;
-  }
-  .baby-frame-empty {
-    color: #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%; height: 100%;
-  }
-  .baby-frame-empty .frame-plus {
-    font-size: 36px;
-    font-weight: 200;
-    line-height: 1;
-    text-shadow: 0 0 10px rgba(255,255,255,0.8), 0 2px 6px rgba(0,0,0,0.6);
-  }
-  /* Frame page: illustration behind pointer so clicks reach baby-frame-wrap (z-index:0) */
-  .slide-img-wrap[data-layout="frame"] .page-bg-img {
-    pointer-events: none;
-  }
 
-  /* ===== Polaroid Album (Page 17) ===== */
-  .polaroid-container {
+  /* ===== Epilogue Album (Frame Overlay) ===== */
+  .album-page-container {
     position: absolute; inset: 0;
-    z-index: 3;
+    z-index: 1;
   }
-  .polaroid-slot {
+  .album-frame-zone {
     position: absolute;
+    overflow: hidden;
+    z-index: 1;
     cursor: pointer;
-    transition: transform 0.2s;
+    transition: box-shadow 0.25s, transform 0.25s, filter 0.25s;
   }
-  .polaroid-slot:active {
-    z-index: 10;
+  .album-frame-zone.selected {
+    box-shadow: 0 0 0 4px rgba(212, 168, 83, 1), 0 0 20px rgba(212, 168, 83, 0.6);
+    transform: scale(1.12);
+    z-index: 8 !important;
+    filter: brightness(1.15);
   }
-  .polaroid-card {
-    width: 100%; height: 100%;
-    background: #fff;
-    padding: 5% 5% 18% 5%;
-    box-shadow: 0 3px 12px rgba(0,0,0,0.35);
-    border-radius: 2px;
+  .album-frame-zone.drop-target {
+    box-shadow: 0 0 0 3px rgba(212, 168, 83, 0.5);
   }
-  .polaroid-card img {
+  .album-frame-zone img.album-photo {
     width: 100%; height: 100%;
     object-fit: cover;
+    pointer-events: none;
+    display: block;
   }
-  .polaroid-empty {
+  .album-frame-overlay {
+    position: absolute;
+    inset: 0;
     width: 100%; height: 100%;
-    border: 2px dashed rgba(0,0,0,0.2);
-    display: flex; align-items: center; justify-content: center;
-    color: rgba(0,0,0,0.3);
-    font-size: 28px;
-    background: #f5f5f0;
+    pointer-events: none;
+    z-index: 5;
   }
-
-  /* Polaroid hint */
-  .polaroid-hint {
+  .album-placeholder-icon {
+    width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.25);
+    backdrop-filter: blur(2px);
+  }
+  .album-page-upload-btn {
+    position: absolute;
+    top: 6px; left: 50%; transform: translateX(-50%);
+    z-index: 10;
+    background: rgba(196, 163, 90, 0.9);
+    color: #fff;
+    border: none;
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    transition: all 0.2s;
+  }
+  .album-page-upload-btn:hover { background: rgba(168, 135, 46, 0.95); }
+  .album-drag-ghost {
+    position: fixed;
+    pointer-events: none;
+    z-index: 1000;
+    opacity: 0.85;
+    transform: translate(-50%, -50%) scale(0.5);
+    border-radius: 8px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.6);
+    transition: opacity 0.15s;
+  }
+  .album-hint {
     position: absolute;
     bottom: 12px;
     left: 50%;
@@ -1120,7 +1236,7 @@
     border-radius: 999px;
     white-space: nowrap;
   }
-  .polaroid-hint-close, .frame-page-hint-close {
+  .album-hint-close, .frame-page-hint-close {
     background: none;
     border: none;
     color: rgba(255,255,255,0.6);
@@ -1153,9 +1269,10 @@
     overflow: hidden;
   }
 
-  /* Cover / Polaroid: full-height image area (no text overlay sibling) */
+  /* Cover / Album / CoverPhoto: full-height image area (no text overlay sibling) */
   .slide-img-wrap[data-layout="cover"],
-  .slide-img-wrap[data-layout="polaroid"] {
+  .slide-img-wrap[data-layout="cover_photo"],
+  .slide-img-wrap[data-layout="epilogue_album"] {
     flex: 1;
     min-height: 0;
     max-height: none;
@@ -1166,7 +1283,6 @@
     top: -40px; left: -40px; right: -40px; bottom: -40px;
     background-size: cover;
     background-position: center;
-    filter: blur(50px) brightness(0.45) saturate(1.3);
     transform: scale(1.15);
     z-index: 0;
   }
@@ -1186,7 +1302,7 @@
     transform: none;
     flex: 1;
     min-height: 0;
-    background: rgba(20, 20, 30, 0.85);
+    background: rgba(20, 20, 30, 0.3);
     overflow: hidden;
   }
   .carousel-slide .page-text-overlay::before {
@@ -1196,7 +1312,7 @@
     background-image: var(--page-bg-url);
     background-size: cover;
     background-position: center;
-    filter: blur(40px) brightness(0.35) saturate(1.3);
+    /* blur + brightness + saturate가 사전 생성 이미지에 포함됨 */
     z-index: 0;
     pointer-events: none;
   }
@@ -1227,6 +1343,7 @@
   .cover-photo-zone { width: 140px; height: 170px; }
 
   .thumb { width: 56px; height: 44px; border-radius: 6px; }
+  .thumb-add { width: 56px; height: 44px; border-radius: 6px; }
   #thumbnail-strip { gap: 6px; }
 
   .input-group input { font-size: 16px; }
@@ -1384,7 +1501,7 @@
 <body>
 
 <!-- Maintenance Overlay -->
-<div class="maintenance-overlay active" id="maintenance-overlay">
+<div class="maintenance-overlay" id="maintenance-overlay">
   <div class="maintenance-icon">
     <svg viewBox="0 0 24 24"><path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/></svg>
   </div>
@@ -1487,6 +1604,38 @@
 
 <input type="file" id="cover-photo-input" accept="image/*" multiple hidden>
 
+<!-- Person Selection Modal -->
+<div class="person-selection-modal" id="person-selection-modal">
+  <h3>아이를 선택해주세요</h3>
+  <canvas id="person-selection-canvas"></canvas>
+  <div class="person-selection-buttons" id="person-selection-buttons"></div>
+</div>
+
+<!-- Album frame picker modal -->
+<div class="album-picker-backdrop" id="album-picker-backdrop">
+  <div class="album-picker-sheet">
+    <div class="album-picker-handle"></div>
+    <div class="album-picker-title">추가할 앨범 페이지를 선택하세요</div>
+    <div class="album-picker-options">
+      <button class="album-picker-opt" data-album-template="0">액자 1개</button>
+      <button class="album-picker-opt" data-album-template="1">액자 2개</button>
+      <button class="album-picker-opt" data-album-template="2">액자 3개</button>
+    </div>
+  </div>
+</div>
+
+<!-- Album drag ghost -->
+<div id="album-drag-ghost" class="album-drag-ghost" style="display:none">
+  <img style="width:96px;height:96px;object-fit:cover;border-radius:8px">
+</div>
+<!-- Album file inputs -->
+<input type="file" id="album-file-input" accept="image/*,.heic,.heif" multiple hidden>
+<input type="file" id="album-single-file-input" accept="image/*,.heic,.heif" hidden>
+<input type="file" id="album-page-file-input" accept="image/*,.heic,.heif" multiple hidden>
+
+<script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
+<script src="js/pipeline-core.js"></script>
 <script>document.write('<script src="js/bookPreviewApp.js?t='+Date.now()+'"><\/script>');</script>
 </body>
 </html>

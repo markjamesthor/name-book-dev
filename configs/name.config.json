@@ -32,8 +32,88 @@
     "shadow_appear": "NAME/shadow_appear.webp",
     "lost_wand": "NAME/lost_wand.webp",
     "our_secret": "NAME/our_secret.webp",
-    "blank": "NAME/blank.png"
+    "blank": "NAME/blank.png",
+    "album_frame_1": "NAME/album_frame_1.webp",
+    "album_frame_2": "NAME/album_frame_2.webp",
+    "album_frame_3": "NAME/album_frame_3.webp"
   },
+  "illustrationsBlur": {
+    "castle": "NAME/blur/u9138982156_extreme_wide_shot_inside_a_grand_medieval_castle_th_c710f602-1e9c-4600-865c-35033745aace_blur.webp",
+    "shadow_attack": "NAME/blur/u9138982156_A_complete_dramatic_heavy_impasto_oil_painting_stor_13b1eae6-6778-4e2a-b3b3-b7a477909b15_blur.webp",
+    "ancient_stair": "NAME/blur/u9138982156_a_king_and_queen_halfway_down_a_massive_ancient_spi_87c4ba28-0707-4240-875f-436f24e37351-34_blur.webp",
+    "magic_book": "NAME/blur/u9138982156_close-up_of_an_enormous_ancient_magical_book_open_o_ca011c0b-c85a-4131-b96e-5a5153f8a94b_blur.webp",
+    "forest_run_queen": "NAME/blur/u9138982156_birds_eye_view_looking_straight_down_a_queen_with_b_cbdf5715-9da2-4614-adda-42d279947615_blur.webp",
+    "cover_bg": "NAME/blur/cover_3_blur.webp",
+    "golden_star": "NAME/blur/u9138982156_a_gigantic_magnificent_golden_star_high_in_the_dark_53b47130-fffa-4126-97c5-2c54ed734fee_blur.webp",
+    "elephant": "NAME/blur/u9138982156_Dark_textured_indigo_forest_background_--ar_32_--v__11ef44ea-9991-4e9d-b47e-fcd7e1b3e7b4_blur.webp",
+    "elephant_close": "NAME/blur/u9138982156_glowing_magical_forest_ground_soft_cyan_light_on_th_6a7eea50-0216-4af6-8bf7-a22fbd23ad41_blur.webp",
+    "cauldron": "NAME/blur/u9138982156_A_whimsical_storybook_illustration_of_a_rustic_anci_22f1727d-5a21-4005-adbe-d49bb773279c_blur.webp",
+    "light_gate": "NAME/blur/u9138982156_extreme_wide_shot_seen_from_behind_two_tiny_figures_ba9a564a-e227-478e-8326-257632210b2e_blur.webp",
+    "castle_frames": "NAME/blur/u9138982156_technical_flat_front_elevation_view_perfectly_strai_5f847c61-c36d-499c-8cec-331b46d0fbce_blur.webp",
+    "giant_tears": "NAME/blur/giant_tears_blur.webp",
+    "baby_cradle": "NAME/blur/baby_cradle_blur.webp",
+    "festival_town": "NAME/blur/festival_town_blur.webp",
+    "festival_feast": "NAME/blur/festival_feast_blur.webp",
+    "shadow_chase": "NAME/blur/shadow_chase_blur.webp",
+    "shadow_appear": "NAME/blur/shadow_appear_blur.webp",
+    "lost_wand": "NAME/blur/lost_wand_blur.webp",
+    "our_secret": "NAME/blur/our_secret_blur.webp"
+  },
+  "illustrationsBlurText": {
+    "castle": "NAME/blur/u9138982156_extreme_wide_shot_inside_a_grand_medieval_castle_th_c710f602-1e9c-4600-865c-35033745aace_blur_text.webp",
+    "shadow_attack": "NAME/blur/u9138982156_A_complete_dramatic_heavy_impasto_oil_painting_stor_13b1eae6-6778-4e2a-b3b3-b7a477909b15_blur_text.webp",
+    "ancient_stair": "NAME/blur/u9138982156_a_king_and_queen_halfway_down_a_massive_ancient_spi_87c4ba28-0707-4240-875f-436f24e37351-34_blur_text.webp",
+    "magic_book": "NAME/blur/u9138982156_close-up_of_an_enormous_ancient_magical_book_open_o_ca011c0b-c85a-4131-b96e-5a5153f8a94b_blur_text.webp",
+    "forest_run_queen": "NAME/blur/u9138982156_birds_eye_view_looking_straight_down_a_queen_with_b_cbdf5715-9da2-4614-adda-42d279947615_blur_text.webp",
+    "cover_bg": "NAME/blur/cover_3_blur_text.webp",
+    "golden_star": "NAME/blur/u9138982156_a_gigantic_magnificent_golden_star_high_in_the_dark_53b47130-fffa-4126-97c5-2c54ed734fee_blur_text.webp",
+    "elephant": "NAME/blur/u9138982156_Dark_textured_indigo_forest_background_--ar_32_--v__11ef44ea-9991-4e9d-b47e-fcd7e1b3e7b4_blur_text.webp",
+    "elephant_close": "NAME/blur/u9138982156_glowing_magical_forest_ground_soft_cyan_light_on_th_6a7eea50-0216-4af6-8bf7-a22fbd23ad41_blur_text.webp",
+    "cauldron": "NAME/blur/u9138982156_A_whimsical_storybook_illustration_of_a_rustic_anci_22f1727d-5a21-4005-adbe-d49bb773279c_blur_text.webp",
+    "light_gate": "NAME/blur/u9138982156_extreme_wide_shot_seen_from_behind_two_tiny_figures_ba9a564a-e227-478e-8326-257632210b2e_blur_text.webp",
+    "castle_frames": "NAME/blur/u9138982156_technical_flat_front_elevation_view_perfectly_strai_5f847c61-c36d-499c-8cec-331b46d0fbce_blur_text.webp",
+    "giant_tears": "NAME/blur/giant_tears_blur_text.webp",
+    "baby_cradle": "NAME/blur/baby_cradle_blur_text.webp",
+    "festival_town": "NAME/blur/festival_town_blur_text.webp",
+    "festival_feast": "NAME/blur/festival_feast_blur_text.webp",
+    "shadow_chase": "NAME/blur/shadow_chase_blur_text.webp",
+    "shadow_appear": "NAME/blur/shadow_appear_blur_text.webp",
+    "lost_wand": "NAME/blur/lost_wand_blur_text.webp",
+    "our_secret": "NAME/blur/our_secret_blur_text.webp"
+  },
+  "albumFrameTemplates": [
+    {
+      "illustration": "album_frame_1",
+      "width": 2592, "height": 1824,
+      "regions": [
+        { "x": 943, "y": 532, "w": 569, "h": 808 }
+      ]
+    },
+    {
+      "illustration": "album_frame_2",
+      "width": 2592, "height": 1824,
+      "regions": [
+        { "x": 830, "y": 815, "w": 335, "h": 499 },
+        { "x": 1506, "y": 968, "w": 300, "h": 370 }
+      ]
+    },
+    {
+      "illustration": "album_frame_3",
+      "width": 2592, "height": 1824,
+      "regions": [
+        { "x": 407, "y": 772, "w": 274, "h": 426 },
+        { "x": 1078, "y": 663, "w": 287, "h": 450 },
+        { "x": 1793, "y": 779, "w": 261, "h": 434 }
+      ]
+    },
+    {
+      "illustration": "castle_frames",
+      "width": 2592, "height": 1824,
+      "regions": [
+        { "x": 1506, "y": 968, "w": 300, "h": 370 }
+      ]
+    }
+  ],
   "versions": {
     "A": {
       "label": "베이비 모드 (3~5세)",
@@ -44,14 +124,10 @@
           "title": "프롤로그",
           "pageType": "frame",
           "illustration": "castle_frames",
+          "albumTemplateIndex": 3,
           "textColor": "white",
           "textPosition": "bottom",
-          "text": "우리 {name}가 아주아주 작았을 때, 새근새근 쿨쿨 잠만 잤을 때 일어난 신비한 이야기야.",
-          "frameStyle": "none",
-          "frame": {
-            "x": 59, "y": 49, "width": 10, "height": 24,
-            "rotation": 0
-          }
+          "text": "우리 {name}가 아주아주 작았을 때, 새근새근 쿨쿨 잠만 잤을 때 일어난 신비한 이야기야."
         },
         {
           "scene": 1,
@@ -191,39 +267,12 @@
         },
         {
           "scene": 18,
-          "title": "에필로그",
-          "pageType": "polaroid_album",
-          "illustration": "blank",
-          "bgGradient": "linear-gradient(135deg, #3a2a1a 0%, #5a4030 50%, #3a2a1a 100%)",
+          "title": "우리 아이",
+          "pageType": "cover_photo",
+          "albumTemplateIndex": 0,
           "textColor": "white",
           "textPosition": "none",
-          "text": "",
-          "polaroidSlots": [
-            { "x": 3,  "y": 4,  "width": 26, "height": 30, "rotation": -6 },
-            { "x": 33, "y": 2,  "width": 26, "height": 30, "rotation": 4 },
-            { "x": 64, "y": 5,  "width": 26, "height": 30, "rotation": -3 },
-            { "x": 8,  "y": 38, "width": 26, "height": 30, "rotation": 5 },
-            { "x": 37, "y": 36, "width": 26, "height": 30, "rotation": -4 },
-            { "x": 66, "y": 40, "width": 26, "height": 30, "rotation": 7 }
-          ]
-        },
-        {
-          "scene": 19,
-          "title": "에필로그 2",
-          "pageType": "polaroid_album",
-          "illustration": "blank",
-          "bgGradient": "linear-gradient(135deg, #2a1a2e 0%, #4a3050 50%, #2a1a2e 100%)",
-          "textColor": "white",
-          "textPosition": "none",
-          "text": "",
-          "polaroidSlots": [
-            { "x": 3,  "y": 4,  "width": 26, "height": 30, "rotation": 5 },
-            { "x": 33, "y": 2,  "width": 26, "height": 30, "rotation": -3 },
-            { "x": 64, "y": 5,  "width": 26, "height": 30, "rotation": 6 },
-            { "x": 8,  "y": 38, "width": 26, "height": 30, "rotation": -5 },
-            { "x": 37, "y": 36, "width": 26, "height": 30, "rotation": 3 },
-            { "x": 66, "y": 40, "width": 26, "height": 30, "rotation": -7 }
-          ]
+          "text": ""
         }
       ]
     },
@@ -236,14 +285,10 @@
           "title": "프롤로그",
           "pageType": "frame",
           "illustration": "castle_frames",
+          "albumTemplateIndex": 3,
           "textColor": "white",
           "textPosition": "bottom",
-          "text": "이 이야기는 {name}가 아주 어렸을 때 일어난,\n우리 가족만의 놀라운 비밀 이야기란다.",
-          "frameStyle": "none",
-          "frame": {
-            "x": 59, "y": 49, "width": 10, "height": 24,
-            "rotation": 0
-          }
+          "text": "이 이야기는 {name}가 아주 어렸을 때 일어난,\n우리 가족만의 놀라운 비밀 이야기란다."
         },
         {
           "scene": 1,
@@ -383,39 +428,12 @@
         },
         {
           "scene": 18,
-          "title": "에필로그",
-          "pageType": "polaroid_album",
-          "illustration": "blank",
-          "bgGradient": "linear-gradient(135deg, #3a2a1a 0%, #5a4030 50%, #3a2a1a 100%)",
+          "title": "우리 아이",
+          "pageType": "cover_photo",
+          "albumTemplateIndex": 0,
           "textColor": "white",
           "textPosition": "none",
-          "text": "",
-          "polaroidSlots": [
-            { "x": 3,  "y": 4,  "width": 26, "height": 30, "rotation": -6 },
-            { "x": 33, "y": 2,  "width": 26, "height": 30, "rotation": 4 },
-            { "x": 64, "y": 5,  "width": 26, "height": 30, "rotation": -3 },
-            { "x": 8,  "y": 38, "width": 26, "height": 30, "rotation": 5 },
-            { "x": 37, "y": 36, "width": 26, "height": 30, "rotation": -4 },
-            { "x": 66, "y": 40, "width": 26, "height": 30, "rotation": 7 }
-          ]
-        },
-        {
-          "scene": 19,
-          "title": "에필로그 2",
-          "pageType": "polaroid_album",
-          "illustration": "blank",
-          "bgGradient": "linear-gradient(135deg, #2a1a2e 0%, #4a3050 50%, #2a1a2e 100%)",
-          "textColor": "white",
-          "textPosition": "none",
-          "text": "",
-          "polaroidSlots": [
-            { "x": 3,  "y": 4,  "width": 26, "height": 30, "rotation": 5 },
-            { "x": 33, "y": 2,  "width": 26, "height": 30, "rotation": -3 },
-            { "x": 64, "y": 5,  "width": 26, "height": 30, "rotation": 6 },
-            { "x": 8,  "y": 38, "width": 26, "height": 30, "rotation": -5 },
-            { "x": 37, "y": 36, "width": 26, "height": 30, "rotation": 3 },
-            { "x": 66, "y": 40, "width": 26, "height": 30, "rotation": -7 }
-          ]
+          "text": ""
         }
       ]
     }

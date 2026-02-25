@@ -64,16 +64,28 @@ let coverErrorText = '';
 let coverCropData = null;
 let coverPhotoOptions = null;
 let selectedModelKey = null;
-let coverManualOffset = null;
+let coverManualOffsets = {};  // modelKey → { dx, dy, rotation }
+// 현재 선택된 모델의 오프셋 접근 헬퍼
+function getCoverOffset() {
+  if (!selectedModelKey) return { dx: 0, dy: 0, rotation: 0 };
+  if (!coverManualOffsets[selectedModelKey]) coverManualOffsets[selectedModelKey] = { dx: 0, dy: 0, rotation: 0 };
+  return coverManualOffsets[selectedModelKey];
+}
 let isEditingCoverPos = false;
 let coverCroppedFile = null;
 
-// 특수 페이지 사진 상태 (key: "frame_0" 또는 "polaroid_16_2" → { file, url })
+// 특수 페이지 사진 상태 (key: "frame_0" 또는 "album_18_0" → { file, url, img })
 const pagePhotos = new Map();
 
-// 폴라로이드 위치 오프셋 (key: slotKey → { dx, dy } 컨테이너 % 단위)
-const polaroidOffsets = new Map();
-let polaroidDragJustEnded = false;
+// ========== Epilogue Album State ==========
+let albumPhotos = [];       // flat array of Image objects (null = empty)
+let albumPhotoURLs = [];    // flat array of object URLs
+let albumSelectedSlot = -1; // currently selected slot index (-1 = none)
+let albumFrameImages = [];  // preloaded frame Image objects
+let albumPendingSlot = -1;
+let albumPendingPageUpload = null;
+let albumDragState = null;
+let albumToastTimer = null;
 
 // Multi-candidate cover photo system
 let coverCandidates = [];
@@ -84,15 +96,30 @@ let pendingNudge = false; // trigger nudge after first bg-remove result
 // Processing queue — one candidate at a time to avoid overwhelming the server
 let processingQueue = [];
 let isProcessingQueue = false;
+let useRemoveBg = localStorage.getItem('bookPreview_useRemoveBg') !== 'false';
 
-const BG_REMOVE_MODELS = [
-  { key: 'portrait', label: '1' },
-  { key: 'ben2', label: '2' },
-  { key: 'hr-matting', label: '3' },
-  { key: 'removebg', label: '4' },
+const COVER_PIPELINES = [
+  { key: 'crop-ben2', label: '1', steps: [
+    { type: 'crop', params: { padding: 10 } },
+    { type: 'ben2', params: { maxSize: 1024 } },
+  ]},
+  { key: 'crop-removebg', label: '2', steps: [
+    { type: 'crop', params: { padding: 10 } },
+    { type: 'removebg', params: { removebgSize: 'preview' } },
+  ]},
+  { key: 'sam2-birefnet', label: '3', steps: [
+    { type: 'sam2', params: { combine: true } },
+    { type: 'birefnet-matting', params: { maxSize: 1024 } },
+  ]},
+  { key: 'sam2-vitmatte', label: '4', steps: [
+    { type: 'sam2', params: { combine: true } },
+    { type: 'vitmatte', params: { erode: 10, dilate: 20 } },
+  ]},
+  { key: 'crop-portrait', label: '5', steps: [
+    { type: 'crop', params: { padding: 10 } },
+    { type: 'portrait', params: { maxSize: 1024 } },
+  ]},
 ];
-
-let useRemoveBg = localStorage.getItem('bookPreview_useRemoveBg') === 'true';
 
 // ========== DOM ==========
 const els = {};
@@ -173,6 +200,8 @@ async function loadConfig() {
   els.parentNamesInput.value = pn;
 
   updateVariables();
+  initAlbumArrays();
+  preloadAlbumFrameImages(); // async, no await — loads in background
   renderCarousel();
   renderThumbnails();
   renderCoverControls();
@@ -301,15 +330,13 @@ function buildCoverContent() {
   if (selectedOpt && coverPhotoURL) {
     const pos = computeChildPosition();
     let childStyle;
+    const mo = getCoverOffset();
     if (pos) {
-      const mdx = coverManualOffset ? coverManualOffset.dx : 0;
-      const mdy = coverManualOffset ? coverManualOffset.dy : 0;
-      const rot = coverManualOffset ? (coverManualOffset.rotation || 0) : 0;
-      const tx = (pos.leftOffset - 50) + mdx;
-      childStyle = `height:${pos.height.toFixed(1)}%;top:${(pos.top + mdy).toFixed(1)}%;left:50%;transform:translateX(${tx.toFixed(1)}%) rotate(${rot}deg)`;
+      const tx = (pos.leftOffset - 50) + mo.dx;
+      childStyle = `height:${pos.height.toFixed(1)}%;top:${(pos.top + mo.dy).toFixed(1)}%;left:50%;transform:translateX(${tx.toFixed(1)}%) rotate(${mo.rotation}deg)`;
     } else {
-      const rot = coverManualOffset ? (coverManualOffset.rotation || 0) : 0;
-      childStyle = `height:80%;bottom:0;left:50%;transform:translateX(-50%) rotate(${rot}deg)`;
+      const dx = -50 + mo.dx;
+      childStyle = `height:80%;bottom:${(-mo.dy).toFixed(1)}%;left:50%;transform:translateX(${dx.toFixed(1)}%) rotate(${mo.rotation}deg)`;
     }
     const wrapStyle = getCoverLayoutStyle();
     const nudgeClass = pendingNudge ? ' nudge' : '';
@@ -322,25 +349,30 @@ function buildCoverContent() {
     if (pendingNudge) pendingNudge = false;
 
     // Model toggle inside the card
-    const activeModels = BG_REMOVE_MODELS.filter(m => m.key !== 'removebg' || useRemoveBg);
-    const activeCandidate = coverCandidates[activeCandidateIndex];
-    const failedSet = activeCandidate && activeCandidate.failedModels || new Set();
-    let activeIdx = 0;
-    const toggleOpts = activeModels.map((m, idx) => {
-      const loaded = !!coverPhotoOptions[m.key];
-      const failed = failedSet.has(m.key);
-      const active = selectedModelKey === m.key;
-      let cls = 'model-toggle-option';
-      if (active) { cls += ' active'; activeIdx = idx; }
-      if (failed) cls += ' model-toggle-failed';
-      else if (!loaded) cls += ' model-toggle-loading';
-      return `<div class="${cls}" data-model="${m.key}" data-idx="${idx}">${m.label}</div>`;
-    }).join('');
-    const indicatorHtml = `<div class="model-toggle-indicator" style="transform:translateX(${activeIdx * 46}px)"></div>`;
-    const toggleHtml = `<div class="cover-model-overlay">
-      <div class="model-toggle model-toggle-large">${indicatorHtml}${toggleOpts}</div>
-      <div class="model-toggle-hint">숫자를 눌러 배경이 가장 잘 지워진 사진을 골라주세요</div>
-    </div>`;
+    let toggleHtml;
+    {
+      const activeCandidate = coverCandidates[activeCandidateIndex];
+      const failedSet = activeCandidate && activeCandidate.failedModels || new Set();
+      let activeIdx = 0;
+      const NON_GPU = ['removebg'];
+      const isExt = (p) => p.steps.every(s => NON_GPU.includes(s.type) || s.type === 'crop');
+      const visiblePipelines = COVER_PIPELINES.filter(p => !(isExt(p) && !useRemoveBg));
+      const toggleOpts = visiblePipelines.map((p, idx) => {
+        const loaded = !!coverPhotoOptions[p.key];
+        const failed = failedSet.has(p.key);
+        const active = selectedModelKey === p.key;
+        let cls = 'model-toggle-option';
+        if (active) { cls += ' active'; activeIdx = idx; }
+        if (failed) cls += ' model-toggle-failed';
+        else if (!loaded) cls += ' model-toggle-loading';
+        return `<div class="${cls}" data-model="${p.key}" data-idx="${idx}">${p.label}</div>`;
+      }).join('');
+      const indicatorHtml = `<div class="model-toggle-indicator" style="transform:translateX(${activeIdx * 46}px)"></div>`;
+      toggleHtml = `<div class="cover-model-overlay">
+        <div class="model-toggle model-toggle-large">${indicatorHtml}${toggleOpts}</div>
+        <div class="model-toggle-hint">숫자를 눌러 배경이 가장 잘 지워진 사진을 골라주세요</div>
+      </div>`;
+    }
 
     return `<div class="slide-img-wrap" data-layout="cover">${imgContent}${titleHtml}</div>${toggleHtml}`;
   }
@@ -478,13 +510,20 @@ function buildSlideContent(pageIndex) {
 
   if (page.isCover) return buildCoverContent();
   if (page.pageType === 'frame') return buildFrameContent(pageIndex);
-  if (page.pageType === 'polaroid_album') return buildPolaroidContent(pageIndex);
+  if (page.pageType === 'cover_photo') return buildCoverPhotoContent(pageIndex);
+  if (page.pageType === 'epilogue_album') return buildEpilogueAlbumContent(pageIndex);
 
   let imgContent = '';
   let imgPath = '';
+  let blurBgPath = '';
+  let blurTextPath = '';
   if (page.illustration && config.illustrations[page.illustration]) {
     imgPath = config.illustrations[page.illustration];
-    imgContent = `<div class="page-bg-blur" style="background-image:url('${imgPath}')"></div>
+    const blurMap = config.illustrationsBlur || {};
+    const blurTextMap = config.illustrationsBlurText || {};
+    blurBgPath = blurMap[page.illustration] || imgPath;
+    blurTextPath = blurTextMap[page.illustration] || imgPath;
+    imgContent = `<div class="page-bg-blur" style="background-image:url('${blurBgPath}')"></div>
       <img class="page-bg-img" src="${imgPath}" alt="${page.title}" style="object-fit:cover;object-position:center;" />`;
   } else if (page.bgGradient) {
     imgContent = `<div class="page-bg-gradient" style="background:${page.bgGradient}"></div>`;
@@ -493,7 +532,7 @@ function buildSlideContent(pageIndex) {
   const text = substituteVars(page.text, variables);
   const textColor = page.textColor || 'white';
   const posClass = `text-pos-${page.textPosition || 'center'}`;
-  const bgVar = imgPath ? `--page-bg-url:url('${imgPath}');` : '';
+  const bgVar = blurTextPath ? `--page-bg-url:url('${blurTextPath}');` : '';
 
   return `
     <div class="slide-img-wrap">${imgContent}</div>
@@ -504,41 +543,42 @@ function buildSlideContent(pageIndex) {
     </div>`;
 }
 
-// ========== Frame Page (Page 1) ==========
+// ========== Frame Page (Page 1) — album-style rendering ==========
 
 function buildFrameContent(pageIndex) {
   const pages = getPages();
   const page = pages[pageIndex];
   const scene = page.scene;
 
-  let imgContent = '';
-  let imgPath = '';
-  if (page.illustration && config.illustrations[page.illustration]) {
-    imgPath = config.illustrations[page.illustration];
-    imgContent = `<div class="page-bg-blur" style="background-image:url('${imgPath}')"></div>
-      <img class="page-bg-img" src="${imgPath}" alt="${page.title}" style="object-fit:cover;object-position:center;" />`;
-  }
+  const templates = getAlbumTemplates();
+  const tmplIdx = page.albumTemplateIndex != null ? page.albumTemplateIndex : 0;
+  const tmpl = templates[tmplIdx];
+  if (!tmpl) return '<div class="slide-img-wrap"><div style="color:#f66;padding:40px;text-align:center">프레임 템플릿 없음</div></div>';
 
-  const frame = page.frame || { x: 32, y: 10, width: 36, height: 52, rotation: 0 };
+  const imgPath = config.illustrations[tmpl.illustration];
   const slotKey = `frame_${scene}`;
   const photo = pagePhotos.get(slotKey);
 
-  let frameInner;
-  if (photo) {
-    const bgPos = photo.bgPosition || 'center center';
-    const bgSize = photo.bgSize || 'cover';
-    frameInner = `<div class="baby-frame-photo" style="background-image:url('${photo.url}');background-size:${bgSize};background-position:${bgPos}"></div>`;
-  } else {
-    frameInner = `<div class="baby-frame-empty"><span class="frame-plus">+</span></div>`;
-  }
+  let zonesHtml = '';
+  tmpl.regions.forEach((region) => {
+    let inner;
+    if (photo) {
+      inner = `<img class="album-photo" src="${photo.url}" draggable="false">`;
+    } else {
+      inner = `<div class="album-placeholder-icon">
+        <svg style="width:32px;height:32px" fill="none" stroke="rgba(255,255,255,0.3)" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4.5v15m7.5-7.5h-15"/>
+        </svg>
+      </div>`;
+    }
+    const left = (region.x / tmpl.width * 100).toFixed(3);
+    const top = (region.y / tmpl.height * 100).toFixed(3);
+    const w = (region.w / tmpl.width * 100).toFixed(3);
+    const h = (region.h / tmpl.height * 100).toFixed(3);
+    zonesHtml += `<div class="album-frame-zone frame-page-zone" data-slot-key="${slotKey}" style="left:${left}%;top:${top}%;width:${w}%;height:${h}%">${inner}</div>`;
+  });
 
-  const noFrame = page.frameStyle === 'none';
-  const frameClass = noFrame ? 'baby-frame baby-frame-none' : 'baby-frame';
-  const emptyClass = photo ? '' : ' frame-wrap-empty';
-  const frameCfg = JSON.stringify(frame).replace(/"/g, '&quot;');
-  const frameHtml = `<div class="baby-frame-wrap${emptyClass}" data-slot-key="${slotKey}" data-frame-cfg="${frameCfg}" style="opacity:0;transform:rotate(${frame.rotation}deg)">
-    <div class="${frameClass}"><div class="baby-frame-inner">${frameInner}</div></div>
-  </div>`;
+  const overlayHtml = imgPath ? `<img class="album-frame-overlay" src="${imgPath}" draggable="false">` : '';
 
   const frameHintDismissed = window._frameHintDismissed || photo;
   const frameHintHtml = frameHintDismissed ? '' :
@@ -547,13 +587,20 @@ function buildFrameContent(pageIndex) {
       <button class="frame-page-hint-close">&times;</button>
     </div>`;
 
+  const blurTextMap = config.illustrationsBlurText || {};
+  const blurTextPath = blurTextMap[page.illustration] || imgPath;
   const text = substituteVars(page.text, variables);
   const textColor = page.textColor || 'white';
   const posClass = `text-pos-${page.textPosition || 'bottom'}`;
-  const bgVar = imgPath ? `--page-bg-url:url('${imgPath}');` : '';
+  const bgVar = blurTextPath ? `--page-bg-url:url('${blurTextPath}');` : '';
 
   return `
-    <div class="slide-img-wrap" data-layout="frame">${imgContent}${frameHtml}</div>
+    <div class="slide-img-wrap" data-layout="frame" style="aspect-ratio:${tmpl.width}/${tmpl.height}">
+      <div class="album-page-container" style="aspect-ratio:${tmpl.width}/${tmpl.height}">
+        ${zonesHtml}
+        ${overlayHtml}
+      </div>
+    </div>
     <div class="page-text-overlay ${posClass}" style="${bgVar}color:${textColor}">
       <div class="page-text-scroll">
         <div class="page-story-text">${text.replace(/\n/g, '<br>')}</div>
@@ -562,132 +609,353 @@ function buildFrameContent(pageIndex) {
     </div>`;
 }
 
-// ========== Frame Overlay Positioning ==========
+// ========== Frame Overlay Positioning (now handled by album-style CSS) ==========
+// No dynamic positioning needed — album-page-container + album-frame-zone handles it
 
-function computeFrameContainerCoords(bgImg, imgWrap, frame) {
-  const natW = bgImg.naturalWidth;
-  const natH = bgImg.naturalHeight;
-  if (!natW || !natH) return null;
+// ========== Cover Photo Page (page 19 — 원본 사진) ==========
 
-  const contW = imgWrap.clientWidth;
-  const contH = imgWrap.clientHeight;
-  const imgAR = natW / natH;
-  const contAR = contW / contH;
-  let scale, offsetX;
+// 활성 커버 후보의 원본 사진 URL 캐시
+let coverOriginalPhotoURL = null;
 
-  if (imgAR > contAR) {
-    scale = contH / natH;
-    offsetX = (natW * scale - contW) * 0.5;
-  } else {
-    scale = contW / natW;
-    offsetX = 0;
+function getCoverOriginalURL() {
+  if (coverCandidates.length === 0 || activeCandidateIndex < 0) return null;
+  const c = coverCandidates[activeCandidateIndex];
+  if (!c || !c.originalFile) return null;
+  // 캐시된 URL이 없으면 생성
+  if (!c._originalURL) {
+    c._originalURL = URL.createObjectURL(c.originalFile);
   }
-
-  return {
-    left: (frame.x / 100 * natW * scale - offsetX) / contW * 100,
-    top: (frame.y / 100 * natH * scale) / contH * 100,
-    width: (frame.width / 100 * natW * scale) / contW * 100,
-    height: (frame.height / 100 * natH * scale) / contH * 100,
-  };
+  return c._originalURL;
 }
 
-function positionFrameOverlay() {
-  const wrap = document.querySelector('.baby-frame-wrap');
-  if (!wrap) return;
-  const cfgStr = wrap.dataset.frameCfg;
-  if (!cfgStr) return;
-
-  const imgWrap = wrap.closest('.slide-img-wrap');
-  const bgImg = imgWrap?.querySelector('.page-bg-img');
-  if (!bgImg) return;
-
-  const doPosition = () => {
-    const frame = JSON.parse(cfgStr);
-    const coords = computeFrameContainerCoords(bgImg, imgWrap, frame);
-    if (!coords) return;
-
-    wrap.style.left = coords.left + '%';
-    wrap.style.top = coords.top + '%';
-    wrap.style.width = coords.width + '%';
-    wrap.style.height = coords.height + '%';
-    wrap.style.opacity = '1';
-
-    bgImg.style.position = 'absolute';
-    bgImg.style.zIndex = '2';
-    bgImg.style.pointerEvents = 'none';
-
-    applyFrameMask(bgImg, coords);
-  };
-
-  if (bgImg.complete && bgImg.naturalWidth) {
-    doPosition();
-  } else {
-    bgImg.addEventListener('load', doPosition, { once: true });
-  }
-}
-
-function applyFrameMask(bgImg, coords) {
-  // Data URI SVG mask: white=show, black=hole (frame area transparent)
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" preserveAspectRatio="none">` +
-    `<rect width="100" height="100" fill="white"/>` +
-    `<rect x="${coords.left.toFixed(2)}" y="${coords.top.toFixed(2)}" width="${coords.width.toFixed(2)}" height="${coords.height.toFixed(2)}" fill="black"/>` +
-    `</svg>`;
-  const dataUri = 'data:image/svg+xml,' + encodeURIComponent(svg);
-  bgImg.style.webkitMaskImage = `url("${dataUri}")`;
-  bgImg.style.maskImage = `url("${dataUri}")`;
-  bgImg.style.webkitMaskSize = '100% 100%';
-  bgImg.style.maskSize = '100% 100%';
-}
-
-function scheduleFramePosition() {
-  positionFrameOverlay();
-  requestAnimationFrame(() => positionFrameOverlay());
-  setTimeout(() => positionFrameOverlay(), 100);
-  setTimeout(() => positionFrameOverlay(), 300);
-}
-
-// ========== Polaroid Album (Page 17) ==========
-
-function buildPolaroidContent(pageIndex) {
+function buildCoverPhotoContent(pageIndex) {
   const pages = getPages();
   const page = pages[pageIndex];
-  const scene = page.scene;
-  const slots = page.polaroidSlots || [];
+  const templates = getAlbumTemplates();
+  const tmplIdx = page.albumTemplateIndex != null ? page.albumTemplateIndex : 0;
+  const tmpl = templates[tmplIdx];
+  if (!tmpl) return '<div class="slide-img-wrap" data-layout="cover_photo"><div style="color:#f66;padding:40px;text-align:center">프레임 템플릿 없음</div></div>';
 
-  let bgContent = '';
-  if (page.bgGradient) {
-    bgContent = `<div class="page-bg-gradient" style="background:${page.bgGradient}"></div>`;
-  }
+  const imgPath = config.illustrations[tmpl.illustration];
+  const originalURL = getCoverOriginalURL();
 
-  let slotsHtml = '';
-  slots.forEach((slot, i) => {
-    const slotKey = `polaroid_${scene}_${i}`;
-    const photo = pagePhotos.get(slotKey);
-    const offset = polaroidOffsets.get(slotKey) || { dx: 0, dy: 0 };
-    const finalX = slot.x + offset.dx;
-    const finalY = slot.y + offset.dy;
-
-    let cardInner;
-    if (photo) {
-      cardInner = `<img src="${photo.url}" alt="사진 ${i + 1}" />`;
+  // 액자 영역에 사진 넣기
+  let zonesHtml = '';
+  tmpl.regions.forEach((region, ri) => {
+    let inner;
+    if (originalURL) {
+      inner = `<img class="album-photo" src="${originalURL}" draggable="false">`;
     } else {
-      cardInner = `<div class="polaroid-empty">+</div>`;
+      inner = `<div class="album-placeholder-icon">
+        <svg style="width:32px;height:32px" fill="none" stroke="rgba(255,255,255,0.3)" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4.5v15m7.5-7.5h-15"/>
+        </svg>
+      </div>`;
     }
-
-    slotsHtml += `<div class="polaroid-slot" data-slot-key="${slotKey}" data-orig-x="${slot.x}" data-orig-y="${slot.y}" data-rotation="${slot.rotation}" data-scene="${scene}" style="left:${finalX}%;top:${finalY}%;width:${slot.width}%;height:${slot.height}%;transform:rotate(${slot.rotation}deg)">
-      <div class="polaroid-card">${cardInner}</div>
-    </div>`;
+    const left = (region.x / tmpl.width * 100).toFixed(3);
+    const top = (region.y / tmpl.height * 100).toFixed(3);
+    const w = (region.w / tmpl.width * 100).toFixed(3);
+    const h = (region.h / tmpl.height * 100).toFixed(3);
+    zonesHtml += `<div class="album-frame-zone cover-photo-zone" data-page-index="${pageIndex}" style="left:${left}%;top:${top}%;width:${w}%;height:${h}%">${inner}</div>`;
   });
 
-  const hintDismissed = window._polaroidHintDismissed;
+  const overlayHtml = imgPath ? `<img class="album-frame-overlay" src="${imgPath}" draggable="false">` : '';
+
+  return `<div class="slide-img-wrap" data-layout="cover_photo" style="aspect-ratio:${tmpl.width}/${tmpl.height}">
+    <div class="album-page-container" style="aspect-ratio:${tmpl.width}/${tmpl.height}">
+      ${zonesHtml}
+      ${overlayHtml}
+    </div>
+  </div>`;
+}
+
+// ========== Epilogue Album ==========
+
+function getAlbumTemplates() {
+  return config.albumFrameTemplates || [];
+}
+
+function getAlbumPages() {
+  return getPages().filter(p => p.pageType === 'epilogue_album');
+}
+
+function getAlbumTotalSlots() {
+  const templates = getAlbumTemplates();
+  return getAlbumPages().reduce((sum, p) => {
+    const tmpl = templates[p.albumTemplateIndex];
+    return sum + (tmpl ? tmpl.regions.length : 0);
+  }, 0);
+}
+
+function getAlbumSlotOffset(pageIndex) {
+  const pages = getPages();
+  const templates = getAlbumTemplates();
+  let offset = 0;
+  const albumPages = pages.filter(p => p.pageType === 'epilogue_album');
+  for (const ap of albumPages) {
+    const apIdx = pages.indexOf(ap);
+    if (apIdx >= pageIndex) break;
+    const tmpl = templates[ap.albumTemplateIndex];
+    if (tmpl) offset += tmpl.regions.length;
+  }
+  return offset;
+}
+
+function initAlbumArrays() {
+  const total = getAlbumTotalSlots();
+  if (albumPhotos.length !== total) {
+    albumPhotos = new Array(total).fill(null);
+    albumPhotoURLs = new Array(total).fill(null);
+  }
+}
+
+async function convertHeicIfNeeded(file) {
+  const name = file.name.toLowerCase();
+  if (name.endsWith('.heic') || name.endsWith('.heif')) {
+    if (typeof heic2any !== 'undefined') {
+      const blob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 1.0 });
+      return blob;
+    }
+  }
+  return file;
+}
+
+async function loadAlbumImageFromFile(file) {
+  const converted = await convertHeicIfNeeded(file);
+  const url = URL.createObjectURL(converted);
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve({ img, url });
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+function albumRefreshSlot(slot) {
+  const zone = document.querySelector(`.album-frame-zone[data-album-slot="${slot}"]`);
+  if (!zone) return;
+  if (albumPhotos[slot]) {
+    zone.innerHTML = `<img class="album-photo" src="${albumPhotoURLs[slot]}" draggable="false">`;
+  } else {
+    zone.innerHTML = `<div class="album-placeholder-icon">
+      <svg style="width:32px;height:32px" fill="none" stroke="rgba(255,255,255,0.3)" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4.5v15m7.5-7.5h-15"/>
+      </svg>
+    </div>`;
+  }
+}
+
+function albumShowToast(msg) {
+  const old = document.getElementById('album-toast');
+  if (old) old.remove();
+  clearTimeout(albumToastTimer);
+  const el = document.createElement('div');
+  el.id = 'album-toast';
+  el.style.cssText = 'position:fixed;left:50%;bottom:100px;transform:translateX(-50%);z-index:200;background:rgba(30,30,30,0.95);backdrop-filter:blur(8px);color:#fff;font-size:13px;padding:8px 18px;border-radius:999px;box-shadow:0 2px 12px rgba(0,0,0,0.3);border:1px solid rgba(196,163,90,0.3);animation:toastIn 0.25s ease-out';
+  el.textContent = msg;
+  document.body.appendChild(el);
+  albumToastTimer = setTimeout(() => {
+    el.style.animation = 'toastOut 0.25s ease-in forwards';
+    setTimeout(() => el.remove(), 250);
+  }, 2000);
+}
+
+function albumSwapPhotos(a, b) {
+  [albumPhotos[a], albumPhotos[b]] = [albumPhotos[b], albumPhotos[a]];
+  [albumPhotoURLs[a], albumPhotoURLs[b]] = [albumPhotoURLs[b], albumPhotoURLs[a]];
+  albumRefreshSlot(a);
+  albumRefreshSlot(b);
+}
+
+function albumHandleTap(slot) {
+  if (!albumPhotos[slot]) {
+    if (albumSelectedSlot !== -1) {
+      albumSwapPhotos(albumSelectedSlot, slot);
+      const prev = document.querySelector(`.album-frame-zone[data-album-slot="${albumSelectedSlot}"]`);
+      if (prev) prev.classList.remove('selected');
+      albumSelectedSlot = -1;
+    } else {
+      albumPendingSlot = slot;
+      document.getElementById('album-single-file-input').click();
+    }
+    return;
+  }
+  if (albumSelectedSlot === -1) {
+    albumSelectedSlot = slot;
+    const zone = document.querySelector(`.album-frame-zone[data-album-slot="${slot}"]`);
+    if (zone) zone.classList.add('selected');
+    albumShowToast('이동할 액자를 선택하세요');
+  } else if (albumSelectedSlot === slot) {
+    albumSelectedSlot = -1;
+    const zone = document.querySelector(`.album-frame-zone[data-album-slot="${slot}"]`);
+    if (zone) zone.classList.remove('selected');
+  } else {
+    albumSwapPhotos(albumSelectedSlot, slot);
+    const prev = document.querySelector(`.album-frame-zone[data-album-slot="${albumSelectedSlot}"]`);
+    if (prev) prev.classList.remove('selected');
+    albumSelectedSlot = -1;
+    albumShowToast('사진이 이동했습니다');
+  }
+}
+
+function albumStartDrag(slot, x, y) {
+  albumDragState = { slot };
+  const ghost = document.getElementById('album-drag-ghost');
+  ghost.querySelector('img').src = albumPhotoURLs[slot];
+  ghost.style.display = 'block';
+  ghost.style.left = x + 'px';
+  ghost.style.top = y + 'px';
+  const zone = document.querySelector(`.album-frame-zone[data-album-slot="${slot}"]`);
+  if (zone) zone.style.opacity = '0.4';
+  document.querySelectorAll('.album-frame-zone').forEach(z => {
+    const s = parseInt(z.dataset.albumSlot);
+    if (s !== slot) z.classList.add('drop-target');
+  });
+  if (navigator.vibrate) navigator.vibrate(30);
+}
+
+function albumMoveDrag(x, y) {
+  const ghost = document.getElementById('album-drag-ghost');
+  ghost.style.left = x + 'px';
+  ghost.style.top = y + 'px';
+}
+
+function albumEndDrag(x, y) {
+  const ghost = document.getElementById('album-drag-ghost');
+  ghost.style.display = 'none';
+  const els2 = document.elementsFromPoint(x, y);
+  let targetSlot = null;
+  for (const el of els2) {
+    if (el.dataset && el.dataset.albumSlot !== undefined) {
+      targetSlot = parseInt(el.dataset.albumSlot);
+      break;
+    }
+  }
+  if (targetSlot !== null && targetSlot !== albumDragState.slot) {
+    albumSwapPhotos(albumDragState.slot, targetSlot);
+  }
+  const zone = document.querySelector(`.album-frame-zone[data-album-slot="${albumDragState.slot}"]`);
+  if (zone) zone.style.opacity = '';
+  document.querySelectorAll('.album-frame-zone').forEach(z => z.classList.remove('drop-target'));
+  albumDragState = null;
+}
+
+function drawCoverFit(ctx, img, x, y, w, h) {
+  const iw = img.naturalWidth || img.width;
+  const ih = img.naturalHeight || img.height;
+  const scale = Math.max(w / iw, h / ih);
+  const sw = w / scale;
+  const sh = h / scale;
+  const sx = (iw - sw) / 2;
+  const sy = (ih - sh) / 2;
+  ctx.drawImage(img, sx, sy, sw, sh, x, y, w, h);
+}
+
+async function albumSavePage(pageIndex) {
+  const pages = getPages();
+  const page = pages[pageIndex];
+  const templates = getAlbumTemplates();
+  const tmpl = templates[page.albumTemplateIndex];
+  if (!tmpl) return;
+  const offset = getAlbumSlotOffset(pageIndex);
+  const pagePhotosSlice = albumPhotos.slice(offset, offset + tmpl.regions.length);
+  if (!pagePhotosSlice.some(p => p !== null)) {
+    albumShowToast('저장할 사진이 없습니다');
+    return;
+  }
+  albumShowToast('이미지 생성 중...');
+  const scale = 2;
+  const canvas = document.createElement('canvas');
+  canvas.width = tmpl.width * scale;
+  canvas.height = tmpl.height * scale;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.scale(scale, scale);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, tmpl.width, tmpl.height);
+  for (let i = 0; i < tmpl.regions.length; i++) {
+    const photo = albumPhotos[offset + i];
+    if (!photo) continue;
+    const r = tmpl.regions[i];
+    drawCoverFit(ctx, photo, r.x, r.y, r.w, r.h);
+  }
+  const frameImg = albumFrameImages[page.albumTemplateIndex];
+  if (frameImg) ctx.drawImage(frameImg, 0, 0, tmpl.width, tmpl.height);
+  const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.95));
+  const file = new File([blob], `epilogue_album_page${page.scene}.jpg`, { type: 'image/jpeg' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file] });
+      albumShowToast('저장 완료');
+    } catch (e) {
+      if (e.name !== 'AbortError') albumShowToast('저장이 취소되었습니다');
+    }
+  } else {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = file.name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    albumShowToast('저장 완료');
+  }
+}
+
+function buildEpilogueAlbumContent(pageIndex) {
+  const pages = getPages();
+  const page = pages[pageIndex];
+  const templates = getAlbumTemplates();
+  const tmpl = templates[page.albumTemplateIndex];
+  if (!tmpl) return '<div class="slide-img-wrap" data-layout="epilogue_album"><div style="color:#f66;padding:40px;text-align:center">프레임 템플릿 없음</div></div>';
+
+  initAlbumArrays();
+  const offset = getAlbumSlotOffset(pageIndex);
+  const imgPath = config.illustrations[tmpl.illustration];
+
+  let zonesHtml = '';
+  tmpl.regions.forEach((region, ri) => {
+    const slot = offset + ri;
+    let inner;
+    if (albumPhotos[slot]) {
+      inner = `<img class="album-photo" src="${albumPhotoURLs[slot]}" draggable="false">`;
+    } else {
+      inner = `<div class="album-placeholder-icon">
+        <svg style="width:32px;height:32px" fill="none" stroke="rgba(255,255,255,0.3)" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 4.5v15m7.5-7.5h-15"/>
+        </svg>
+      </div>`;
+    }
+    const left = (region.x / tmpl.width * 100).toFixed(3);
+    const top = (region.y / tmpl.height * 100).toFixed(3);
+    const w = (region.w / tmpl.width * 100).toFixed(3);
+    const h = (region.h / tmpl.height * 100).toFixed(3);
+    zonesHtml += `<div class="album-frame-zone" data-album-slot="${slot}" data-page-index="${pageIndex}" style="left:${left}%;top:${top}%;width:${w}%;height:${h}%">${inner}</div>`;
+  });
+
+  const overlayHtml = imgPath ? `<img class="album-frame-overlay" src="${imgPath}" draggable="false">` : '';
+
+  const uploadBtnHtml = tmpl.regions.length > 1 ?
+    `<button class="album-page-upload-btn" data-album-page-index="${pageIndex}" data-album-offset="${offset}" data-album-count="${tmpl.regions.length}">이 페이지에 한번에 올리기</button>` : '';
+
+  const saveBtnHtml = '';
+
+  const hintDismissed = window._albumHintDismissed;
   const hintHtml = hintDismissed ? '' :
-    `<div class="polaroid-hint">
-      <span>사진 여러장을 한번에 올릴 수 있습니다</span>
-      <button class="polaroid-hint-close">&times;</button>
+    `<div class="album-hint">
+      <span>사진을 탭하여 선택, 다른 액자를 탭하면 교체</span>
+      <button class="album-hint-close">&times;</button>
     </div>`;
 
-  return `
-    <div class="slide-img-wrap" data-layout="polaroid">${bgContent}<div class="polaroid-container">${slotsHtml}</div>${hintHtml}</div>`;
+  return `<div class="slide-img-wrap" data-layout="epilogue_album" style="aspect-ratio:${tmpl.width}/${tmpl.height}">
+    <div class="album-page-container" style="aspect-ratio:${tmpl.width}/${tmpl.height}">
+      ${zonesHtml}
+      ${overlayHtml}
+    </div>
+    ${uploadBtnHtml}${saveBtnHtml}${hintHtml}
+  </div>`;
 }
 
 // ========== Page Photo Upload ==========
@@ -699,124 +967,6 @@ function handlePagePhotoUpload(slotKey, file) {
   pagePhotos.set(slotKey, { file, url });
   renderCarousel();
   renderThumbnails();
-
-  // 프레임 슬롯이면 ViTPose로 얼굴 위치 감지 (비동기)
-  if (slotKey.startsWith('frame_')) {
-    detectAndCropForFrame(slotKey, file);
-  }
-}
-
-async function detectAndCropForFrame(slotKey, file) {
-  try {
-    const formData = new FormData();
-    formData.append('file', file);
-    const resp = await fetch(`${SMART_CROP_API}/detect-pose?model=vitpose`, {
-      method: 'POST',
-      body: formData,
-    });
-    if (!resp.ok) return;
-    const data = await resp.json();
-    if (!data.success || !data.keypoints) return;
-
-    const kps = data.keypoints;
-    const imgW = data.image_width;
-    const imgH = data.image_height;
-
-    const nose = kps[0];
-    const lShoulder = kps[11];
-    const rShoulder = kps[12];
-    if (nose.score < 0.3) return;
-
-    // --- 어깨 위치 ---
-    let shoulderY = nose.y;
-    if (lShoulder.score > 0.3) shoulderY = Math.max(shoulderY, lShoulder.y);
-    if (rShoulder.score > 0.3) shoulderY = Math.max(shoulderY, rShoulder.y);
-    // 어깨 미감지 fallback: 코 아래로 이미지 높이의 15% 추정
-    if (shoulderY <= nose.y) shoulderY = Math.min(imgH, nose.y + imgH * 0.15);
-
-    let shoulderW = 0;
-    if (lShoulder.score > 0.3 && rShoulder.score > 0.3) {
-      shoulderW = Math.abs(rShoulder.x - lShoulder.x);
-    }
-
-    // --- 머리 상단 추정 ---
-    const lEar = kps[7];
-    const rEar = kps[8];
-    let headTop;
-    if (lEar.score > 0.3 || rEar.score > 0.3) {
-      // 귀 감지: 코-귀 거리 × 2.5 = 머리 전체 높이 추정
-      let earTop = nose.y;
-      if (lEar.score > 0.3) earTop = Math.min(earTop, lEar.y);
-      if (rEar.score > 0.3) earTop = Math.min(earTop, rEar.y);
-      headTop = Math.max(0, nose.y - (nose.y - earTop) * 2.5);
-    } else {
-      // 귀 미감지 fallback: 어깨 너비의 70% 또는 코-어깨 거리의 1.5배
-      const headSize = shoulderW > 0
-        ? shoulderW * 0.7
-        : (shoulderY - nose.y) * 1.5;
-      headTop = Math.max(0, nose.y - Math.max(headSize, imgH * 0.08));
-    }
-
-    // --- 상반신 영역 & 줌 계산 ---
-    const regionH = Math.max(1, shoulderY - headTop);
-    const regionPct = (regionH / imgH) * 100;
-    // 상반신이 프레임 높이의 ~65%를 차지하도록 확대
-    const bgSizePct = Math.round(Math.max(140, Math.min(250, 65 / regionPct * 100)));
-    const yZoom = bgSizePct / 100;
-
-    // --- 얼굴 영역 중심 (이미지 내 0~1 비율) ---
-    // 머리 쪽으로 약간 치우침 (45:55)
-    const faceCenterY = ((headTop + shoulderY) * 0.45) / imgH;
-    const faceCenterX = nose.x / imgW;
-
-    // --- background-position 계산 ---
-    // CSS 공식: bgPct = (target - center × zoom) / (1 - zoom) × 100
-    // target = 프레임 내 원하는 위치 (0~1)
-
-    // Y: 얼굴을 프레임 상단 38% 위치에 배치
-    let bgY = (0.38 - faceCenterY * yZoom) / (1 - yZoom) * 100;
-    bgY = Math.round(Math.max(0, Math.min(100, bgY)));
-
-    // X: 프레임 AR 산출 → X zoom 계산 → 얼굴을 프레임 중앙에 배치
-    let xZoom = yZoom;
-    const scene = parseInt(slotKey.split('_')[1], 10);
-    const framePage = getPages().find(p => p.scene === scene && p.pageType === 'frame');
-    if (framePage?.frame && framePage.illustration) {
-      // 일러스트 원본 치수에서 프레임 컨테이너 AR 계산
-      let natW, natH;
-      const bgImgEl = document.querySelector('.page-bg-img');
-      if (bgImgEl?.naturalWidth) {
-        natW = bgImgEl.naturalWidth;
-        natH = bgImgEl.naturalHeight;
-      } else {
-        const path = config.illustrations[framePage.illustration];
-        if (path) {
-          const tmp = new Image(); tmp.src = path;
-          if (!tmp.naturalWidth) await new Promise(r => { tmp.onload = r; tmp.onerror = r; });
-          natW = tmp.naturalWidth; natH = tmp.naturalHeight;
-        }
-      }
-      if (natW && natH) {
-        // frameAR = 프레임 실제 가로/세로 비율
-        const frameAR = (framePage.frame.width * natW) / (framePage.frame.height * natH);
-        xZoom = yZoom * (imgW / imgH) / frameAR;
-      }
-    }
-    let bgX = (0.50 - faceCenterX * xZoom) / (1 - xZoom) * 100;
-    bgX = Math.round(Math.max(0, Math.min(100, bgX)));
-
-    console.log(`[Frame] face=(${(faceCenterX*100).toFixed(0)}%,${(faceCenterY*100).toFixed(0)}%), region=${regionPct.toFixed(0)}%, zoom=Y${yZoom.toFixed(1)}/X${xZoom.toFixed(1)} → bg: ${bgX}% ${bgY}% / auto ${bgSizePct}%`);
-
-    const entry = pagePhotos.get(slotKey);
-    if (entry) {
-      entry.bgPosition = `${bgX}% ${bgY}%`;
-      entry.bgSize = `auto ${bgSizePct}%`;
-      renderCarousel();
-      renderThumbnails();
-    }
-  } catch (e) {
-    console.warn('[Frame] ViTPose 감지 실패:', e.message);
-  }
 }
 
 function triggerPagePhotoInput(slotKey) {
@@ -836,109 +986,28 @@ function triggerPagePhotoInput(slotKey) {
 
 // ========== Frame Photo Drag (터치로 사진 이동) ==========
 
-let frameDragging = false;
+// Frame photo drag removed — album-style uses object-fit:cover, no manual positioning needed
 
-function initFramePhotoDrag() {
-  let startX, startY, startBgX, startBgY;
-  let photoEl, slotKey, entry;
-
-  const getPhotoEl = (e) => {
-    const el = e.target.closest('.baby-frame-photo');
-    if (!el) return null;
-    const wrap = el.closest('.baby-frame-wrap');
-    return wrap ? { el, slotKey: wrap.dataset.slotKey } : null;
-  };
-
-  const parseBgPos = (pos) => {
-    const m = (pos || '50% 50%').match(/([\d.]+)%\s+([\d.]+)%/);
-    return m ? { x: parseFloat(m[1]), y: parseFloat(m[2]) } : { x: 50, y: 50 };
-  };
-
-  document.addEventListener('touchstart', (e) => {
-    const info = getPhotoEl(e);
-    if (!info) return;
-    entry = pagePhotos.get(info.slotKey);
-    if (!entry) return;
-
-    photoEl = info.el;
-    slotKey = info.slotKey;
-    frameDragging = true; // 즉시 설정 → 캐러셀 스와이프 차단
-    const touch = e.touches[0];
-    startX = touch.clientX;
-    startY = touch.clientY;
-    const bg = parseBgPos(entry.bgPosition);
-    startBgX = bg.x;
-    startBgY = bg.y;
-  }, { passive: true });
-
-  document.addEventListener('touchmove', (e) => {
-    if (!photoEl) return;
-    const touch = e.touches[0];
-    const dx = touch.clientX - startX;
-    const dy = touch.clientY - startY;
-
-    e.preventDefault();
-    if (Math.abs(dx) + Math.abs(dy) < 3) return; // 미세한 떨림 무시
-
-    // 감도: 프레임 크기 대비 이동량
-    const rect = photoEl.getBoundingClientRect();
-    const senX = 100 / Math.max(1, rect.width);
-    const senY = 100 / Math.max(1, rect.height);
-
-    // 드래그 방향과 bg-position 방향이 반대
-    const newX = Math.max(0, Math.min(100, startBgX - dx * senX));
-    const newY = Math.max(0, Math.min(100, startBgY - dy * senY));
-
-    photoEl.style.backgroundPosition = `${newX.toFixed(1)}% ${newY.toFixed(1)}%`;
-  }, { passive: false });
-
-  document.addEventListener('touchend', () => {
-    if (photoEl && entry) {
-      // bgPosition이 실제로 변경됐으면 저장
-      const cur = photoEl.style.backgroundPosition;
-      if (cur && cur !== `${startBgX}% ${startBgY}%`) {
-        entry.bgPosition = cur;
-      }
+async function preloadAlbumFrameImages() {
+  const templates = getAlbumTemplates();
+  albumFrameImages = [];
+  for (const tmpl of templates) {
+    const src = config.illustrations[tmpl.illustration];
+    if (!src) { albumFrameImages.push(null); continue; }
+    try {
+      const img = await new Promise((resolve, reject) => {
+        const i = new Image();
+        i.crossOrigin = 'anonymous';
+        i.onload = () => resolve(i);
+        i.onerror = reject;
+        i.src = src;
+      });
+      albumFrameImages.push(img);
+    } catch (e) {
+      console.warn('Album frame image load failed:', src);
+      albumFrameImages.push(null);
     }
-    photoEl = null;
-    frameDragging = false;
-  });
-}
-
-function triggerPolaroidMultiInput(scene) {
-  const pages = getPages();
-  const page = pages.find(p => p.scene === scene && p.pageType === 'polaroid_album');
-  if (!page) return;
-
-  const slots = page.polaroidSlots || [];
-  const emptyKeys = [];
-  slots.forEach((_, i) => {
-    const key = `polaroid_${scene}_${i}`;
-    if (!pagePhotos.has(key)) emptyKeys.push(key);
-  });
-  if (emptyKeys.length === 0) return;
-
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = 'image/*';
-  input.multiple = true;
-  input.style.display = 'none';
-  document.body.appendChild(input);
-  const cleanup = () => input.remove();
-  input.addEventListener('change', () => {
-    const files = Array.from(input.files).slice(0, emptyKeys.length);
-    files.forEach((file, i) => {
-      const url = URL.createObjectURL(file);
-      pagePhotos.set(emptyKeys[i], { file, url });
-    });
-    if (files.length > 0) {
-      renderCarousel();
-      renderThumbnails();
-    }
-    cleanup();
-  });
-  input.addEventListener('cancel', cleanup);
-  input.click();
+  }
 }
 
 let coverBgNatSize = null;
@@ -1057,7 +1126,7 @@ function renderCarousel() {
   updatePageInfo();
   setupCarouselTouch(track);
   positionCoverChild();
-  scheduleFramePosition();
+
   renderCoverControls();
 }
 
@@ -1071,7 +1140,7 @@ function populateSlides() {
     slides[i].innerHTML = buildSlideContent(pageIdx);
   }
   positionCoverChild();
-  scheduleFramePosition();
+
 }
 
 let pendingNormalize = null;
@@ -1103,7 +1172,7 @@ function normalizeTrackIfNeeded() {
   track.style.transform = `translateX(-${vw}px)`;
   track.offsetHeight;
   positionCoverChild();
-  scheduleFramePosition();
+
 }
 
 function updatePageInfo() {
@@ -1148,7 +1217,7 @@ function goPage(delta) {
     normalizeTrackIfNeeded();
     updatePageInfo();
     positionCoverChild();
-    scheduleFramePosition();
+  
     isAnimating = false;
     onPageChanged();
   };
@@ -1249,6 +1318,7 @@ function setupCarouselTouch(track) {
   let startTime = 0;
   let panStartX = 0;
   let panStartY = 0;
+  let cachedViewerWidth = 0; // touchstart에서 캐싱 → touchmove에서 reflow 방지
 
   // Cover child drag state
   let childDragImg = null;
@@ -1263,20 +1333,17 @@ function setupCarouselTouch(track) {
   let childRotStartAngle = 0;
   let childRotStartRotation = 0;
 
-  // Polaroid drag state
-  let polDragSlot = null;
-  let polDragContainer = null;
-  let polDragStartX = 0;
-  let polDragStartY = 0;
-  let polDragStartDx = 0;
-  let polDragStartDy = 0;
-  let polDragPending = false;
-  let polIsDragging = false;
+  // Album frame drag state
+  let albumDragSlotEl = null;
+  let albumDragSlotIdx = -1;
+  let albumDragStartX2 = 0;
+  let albumDragStartY2 = 0;
+  let albumDragPending2 = false;
+  let albumIsDragging2 = false;
+  let albumDragTimer2 = null;
 
   track.addEventListener('touchstart', (e) => {
     if (isAnimating) return;
-    // 프레임 사진 드래그 중이면 캐러셀 무시
-    if (e.target.closest('.baby-frame-photo')) return;
 
     // If a second finger arrives while child drag is pending → switch to rotation
     if (childDragPending && e.touches.length === 2) {
@@ -1285,7 +1352,7 @@ function setupCarouselTouch(track) {
       childRotating = true;
       const t = e.touches;
       childRotStartAngle = Math.atan2(t[1].clientY - t[0].clientY, t[1].clientX - t[0].clientX) * 180 / Math.PI;
-      childRotStartRotation = coverManualOffset ? (coverManualOffset.rotation || 0) : 0;
+      childRotStartRotation = getCoverOffset().rotation;
       return;
     }
 
@@ -1293,32 +1360,36 @@ function setupCarouselTouch(track) {
     if (!isPinching && !childDragPending && e.touches.length === 1) {
       const img = e.target.closest('.cover-child-img');
       if (img) {
-        if (!coverManualOffset) coverManualOffset = { dx: 0, dy: 0, rotation: 0 };
+        e.preventDefault();
+        const mo = getCoverOffset();
         childDragImg = img;
         childDragWrap = img.closest('.slide-img-wrap');
         childDragStartX = e.touches[0].clientX;
         childDragStartY = e.touches[0].clientY;
-        childDragStartDx = coverManualOffset.dx;
-        childDragStartDy = coverManualOffset.dy;
+        childDragStartDx = mo.dx;
+        childDragStartDy = mo.dy;
         childDragPending = true;
         return;
       }
     }
 
-    // Prepare polaroid slot drag
-    if (!isPinching && !polDragPending && e.touches.length === 1) {
-      const slot = e.target.closest('.polaroid-slot');
-      if (slot && slot.dataset.slotKey) {
-        const slotKey = slot.dataset.slotKey;
-        const existing = polaroidOffsets.get(slotKey) || { dx: 0, dy: 0 };
-        polDragSlot = slot;
-        polDragContainer = slot.closest('.polaroid-container');
-        polDragStartX = e.touches[0].clientX;
-        polDragStartY = e.touches[0].clientY;
-        polDragStartDx = existing.dx;
-        polDragStartDy = existing.dy;
-        polDragPending = true;
-        polIsDragging = false;
+    // Prepare album frame drag (long press)
+    if (!isPinching && !albumDragPending2 && e.touches.length === 1) {
+      const zone = e.target.closest('.album-frame-zone');
+      if (zone && zone.dataset.albumSlot !== undefined) {
+        const slotIdx = parseInt(zone.dataset.albumSlot);
+        albumDragSlotEl = zone;
+        albumDragSlotIdx = slotIdx;
+        albumDragStartX2 = e.touches[0].clientX;
+        albumDragStartY2 = e.touches[0].clientY;
+        albumDragPending2 = true;
+        albumIsDragging2 = false;
+        if (albumPhotos[slotIdx]) {
+          albumDragTimer2 = setTimeout(() => {
+            albumIsDragging2 = true;
+            albumStartDrag(slotIdx, albumDragStartX2, albumDragStartY2);
+          }, 250);
+        }
         return;
       }
     }
@@ -1352,19 +1423,20 @@ function setupCarouselTouch(track) {
     startTime = Date.now();
     isDragging = false;
     deltaX = 0;
+    cachedViewerWidth = els.pageViewer.clientWidth;
     track.style.transition = 'none';
-  }, { passive: true });
+  }, { passive: false });
 
   track.addEventListener('touchmove', (e) => {
-    if (isAnimating || frameDragging) return;
+    if (isAnimating || albumIsDragging2) return;
 
     // Child rotation (two-finger on child photo)
     if (childRotating && childDragImg && e.touches.length === 2) {
       e.preventDefault();
-      if (!coverManualOffset) coverManualOffset = { dx: 0, dy: 0, rotation: 0 };
+      const mo = getCoverOffset();
       const t = e.touches;
       const angle = Math.atan2(t[1].clientY - t[0].clientY, t[1].clientX - t[0].clientX) * 180 / Math.PI;
-      coverManualOffset.rotation = childRotStartRotation + (angle - childRotStartAngle);
+      mo.rotation = childRotStartRotation + (angle - childRotStartAngle);
       childDragImg.style.transition = 'none';
       applyCoverManualOffset(childDragImg);
       return;
@@ -1379,7 +1451,7 @@ function setupCarouselTouch(track) {
         childRotating = true;
         const t = e.touches;
         childRotStartAngle = Math.atan2(t[1].clientY - t[0].clientY, t[1].clientX - t[0].clientX) * 180 / Math.PI;
-        childRotStartRotation = coverManualOffset ? (coverManualOffset.rotation || 0) : 0;
+        childRotStartRotation = getCoverOffset().rotation;
         return;
       } else {
         // Single finger move → confirm child drag
@@ -1387,10 +1459,11 @@ function setupCarouselTouch(track) {
         isEditingCoverPos = true;
         childDragImg.style.transition = 'none';
         // Reset start position to current touch to prevent jump
+        const mo = getCoverOffset();
         childDragStartX = e.touches[0].clientX;
         childDragStartY = e.touches[0].clientY;
-        childDragStartDx = coverManualOffset.dx;
-        childDragStartDy = coverManualOffset.dy;
+        childDragStartDx = mo.dx;
+        childDragStartDy = mo.dy;
         // Fall through to drag below
       }
     }
@@ -1405,40 +1478,34 @@ function setupCarouselTouch(track) {
         return;
       }
       e.preventDefault();
+      const mo = getCoverOffset();
       const pt = e.touches[0];
       const wrapRect = childDragWrap.getBoundingClientRect();
       const dx = ((pt.clientX - childDragStartX) / wrapRect.width) * 100;
       const dy = ((pt.clientY - childDragStartY) / wrapRect.height) * 100;
-      coverManualOffset.dx = childDragStartDx + dx;
-      coverManualOffset.dy = childDragStartDy + dy;
+      mo.dx = childDragStartDx + dx;
+      mo.dy = childDragStartDy + dy;
       applyCoverManualOffset(childDragImg);
       return;
     }
 
-    // Polaroid slot drag
-    if (polDragPending && polDragSlot) {
-      const dx = e.touches[0].clientX - polDragStartX;
-      const dy = e.touches[0].clientY - polDragStartY;
-      if (!polIsDragging && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
-        polIsDragging = true;
-        polDragSlot.style.transition = 'none';
-        polDragSlot.style.zIndex = '10';
+    // Album frame drag
+    if (albumDragPending2 && albumDragSlotEl) {
+      const dx = e.touches[0].clientX - albumDragStartX2;
+      const dy = e.touches[0].clientY - albumDragStartY2;
+      if (!albumIsDragging2 && Math.sqrt(dx*dx + dy*dy) > 10) {
+        clearTimeout(albumDragTimer2);
+        // Finger moved before long press → cancel drag, let carousel handle
+        albumDragPending2 = false;
+        albumDragSlotEl = null;
+        albumDragSlotIdx = -1;
+        // Fall through to normal swipe
       }
-      if (polIsDragging) {
+      if (albumIsDragging2) {
         e.preventDefault();
-        const containerRect = polDragContainer.getBoundingClientRect();
-        const pctDx = (dx / containerRect.width) * 100;
-        const pctDy = (dy / containerRect.height) * 100;
-        const origX = parseFloat(polDragSlot.dataset.origX);
-        const origY = parseFloat(polDragSlot.dataset.origY);
-        const newDx = polDragStartDx + pctDx;
-        const newDy = polDragStartDy + pctDy;
-        polDragSlot.style.left = `${origX + newDx}%`;
-        polDragSlot.style.top = `${origY + newDy}%`;
-        polDragSlot._tempDx = newDx;
-        polDragSlot._tempDy = newDy;
+        albumMoveDrag(e.touches[0].clientX, e.touches[0].clientY);
+        return;
       }
-      return;
     }
 
     if (isEditingCoverPos) return;
@@ -1496,20 +1563,19 @@ function setupCarouselTouch(track) {
     }
 
     deltaX = dx;
-    const viewerWidth = els.pageViewer.clientWidth;
-    const pages = getPages();
+    const totalPages = getPages().length;
 
     let adjustedDx = deltaX;
     if (currentPageIndex === 0 && deltaX > 0) adjustedDx = deltaX * 0.25;
-    if (currentPageIndex === pages.length - 1 && deltaX < 0) adjustedDx = deltaX * 0.25;
+    if (currentPageIndex === totalPages - 1 && deltaX < 0) adjustedDx = deltaX * 0.25;
 
-    const baseOffset = -viewerWidth;
+    const baseOffset = -cachedViewerWidth;
     track.style.transform = `translateX(${baseOffset + adjustedDx}px)`;
   }, { passive: false });
 
   let lastTapTime = 0;
   track.addEventListener('touchend', (e) => {
-    if (frameDragging) return;
+    if (albumIsDragging2) return;
     // Child rotation end — if one finger lifts, stop rotating but keep state
     if (childRotating && e.touches.length < 2) {
       childRotating = false;
@@ -1537,24 +1603,19 @@ function setupCarouselTouch(track) {
       return;
     }
 
-    // Polaroid slot drag end
-    if (polDragPending || polIsDragging) {
-      if (polIsDragging && polDragSlot) {
-        const slotKey = polDragSlot.dataset.slotKey;
-        if (polDragSlot._tempDx != null) {
-          polaroidOffsets.set(slotKey, { dx: polDragSlot._tempDx, dy: polDragSlot._tempDy });
-          delete polDragSlot._tempDx;
-          delete polDragSlot._tempDy;
-        }
-        polDragSlot.style.transition = '';
-        polDragSlot.style.zIndex = '';
-        polaroidDragJustEnded = true;
-        setTimeout(() => { polaroidDragJustEnded = false; }, 300);
+    // Album frame drag end
+    if (albumDragPending2 || albumIsDragging2) {
+      clearTimeout(albumDragTimer2);
+      if (albumIsDragging2) {
+        albumEndDrag(e.changedTouches[0].clientX, e.changedTouches[0].clientY);
+      } else {
+        // Short tap → handle as tap
+        albumHandleTap(albumDragSlotIdx);
       }
-      polDragSlot = null;
-      polDragContainer = null;
-      polDragPending = false;
-      polIsDragging = false;
+      albumDragSlotEl = null;
+      albumDragSlotIdx = -1;
+      albumDragPending2 = false;
+      albumIsDragging2 = false;
       return;
     }
 
@@ -1606,17 +1667,17 @@ function setupCarouselTouch(track) {
 
     if (!isDragging || isAnimating) return;
 
-    const viewerWidth = els.pageViewer.clientWidth;
-    const pages = getPages();
+    const vw = cachedViewerWidth;
+    const totalPages = getPages().length;
     const velocity = Math.abs(deltaX) / (Date.now() - startTime);
-    const threshold = viewerWidth * 0.2;
+    const threshold = vw * 0.2;
     const fastSwipe = velocity > 0.4;
 
     track.style.transition = 'transform 0.3s ease-out';
 
-    if ((deltaX < -threshold || (fastSwipe && deltaX < -30)) && currentPageIndex < pages.length - 1) {
+    if ((deltaX < -threshold || (fastSwipe && deltaX < -30)) && currentPageIndex < totalPages - 1) {
       isAnimating = true;
-      track.style.transform = `translateX(-${viewerWidth * 2}px)`;
+      track.style.transform = `translateX(-${vw * 2}px)`;
 
       let fin1 = false;
       const finalize = () => {
@@ -1653,7 +1714,7 @@ function setupCarouselTouch(track) {
       setTimeout(() => { if (!fin2) finalize(); }, 350);
 
     } else {
-      track.style.transform = `translateX(-${viewerWidth}px)`;
+      track.style.transform = `translateX(-${vw}px)`;
     }
   }, { passive: true });
 
@@ -1668,6 +1729,7 @@ function setupCarouselTouch(track) {
     startTime = Date.now();
     isDragging = false;
     deltaX = 0;
+    cachedViewerWidth = els.pageViewer.clientWidth;
     track.style.transition = 'none';
     e.preventDefault();
   });
@@ -1689,14 +1751,13 @@ function setupCarouselTouch(track) {
     }
 
     deltaX = dx;
-    const viewerWidth = els.pageViewer.clientWidth;
-    const pages = getPages();
+    const totalPages = getPages().length;
 
     let adjustedDx = deltaX;
     if (currentPageIndex === 0 && deltaX > 0) adjustedDx = deltaX * 0.25;
-    if (currentPageIndex === pages.length - 1 && deltaX < 0) adjustedDx = deltaX * 0.25;
+    if (currentPageIndex === totalPages - 1 && deltaX < 0) adjustedDx = deltaX * 0.25;
 
-    const baseOffset = -viewerWidth;
+    const baseOffset = -cachedViewerWidth;
     track.style.transform = `translateX(${baseOffset + adjustedDx}px)`;
   });
 
@@ -1705,17 +1766,17 @@ function setupCarouselTouch(track) {
     mouseDown = false;
     if (!isDragging || isAnimating) return;
 
-    const viewerWidth = els.pageViewer.clientWidth;
-    const pages = getPages();
+    const vw = cachedViewerWidth;
+    const totalPages = getPages().length;
     const velocity = Math.abs(deltaX) / (Date.now() - startTime);
-    const threshold = viewerWidth * 0.2;
+    const threshold = vw * 0.2;
     const fastSwipe = velocity > 0.4;
 
     track.style.transition = 'transform 0.3s ease-out';
 
-    if ((deltaX < -threshold || (fastSwipe && deltaX < -30)) && currentPageIndex < pages.length - 1) {
+    if ((deltaX < -threshold || (fastSwipe && deltaX < -30)) && currentPageIndex < totalPages - 1) {
       isAnimating = true;
-      track.style.transform = `translateX(-${viewerWidth * 2}px)`;
+      track.style.transform = `translateX(-${vw * 2}px)`;
 
       let fin1 = false;
       const finalize = () => {
@@ -1752,7 +1813,7 @@ function setupCarouselTouch(track) {
       setTimeout(() => { if (!fin2) finalize(); }, 350);
 
     } else {
-      track.style.transform = `translateX(-${viewerWidth}px)`;
+      track.style.transform = `translateX(-${vw}px)`;
     }
   };
   track.addEventListener('mouseup', mouseEndHandler);
@@ -1776,6 +1837,25 @@ function renderThumbnails() {
     if (page.isCover) {
       const coverBg = config.illustrations['cover_bg'];
       thumb.innerHTML = `<img src="${coverBg}" alt="커버" /><div class="thumb-cover">커버</div>`;
+    } else if (page.pageType === 'cover_photo') {
+      const templates = getAlbumTemplates();
+      const tmplIdx = page.albumTemplateIndex != null ? page.albumTemplateIndex : 0;
+      const tmpl = templates[tmplIdx];
+      const framePath = tmpl ? config.illustrations[tmpl.illustration] : '';
+      if (framePath) {
+        thumb.innerHTML = `<img src="${framePath}" alt="${page.title}" /><span class="thumb-label">${i}</span>`;
+      } else {
+        thumb.innerHTML = `<div class="thumb-gradient" style="background:#2a2a2a"></div><span class="thumb-label">${i}</span>`;
+      }
+    } else if (page.pageType === 'epilogue_album') {
+      const templates = getAlbumTemplates();
+      const tmpl = templates[page.albumTemplateIndex];
+      const framePath = tmpl ? config.illustrations[tmpl.illustration] : '';
+      if (framePath) {
+        thumb.innerHTML = `<img src="${framePath}" alt="${page.title}" /><span class="thumb-label">${i}</span>`;
+      } else {
+        thumb.innerHTML = `<div class="thumb-gradient" style="background:#333"></div><span class="thumb-label">${i}</span>`;
+      }
     } else if (page.illustration && config.illustrations[page.illustration]) {
       const imgPath = config.illustrations[page.illustration];
       thumb.innerHTML = `<img src="${imgPath}" alt="${page.title}" /><span class="thumb-label">${i}</span>`;
@@ -1786,15 +1866,33 @@ function renderThumbnails() {
     thumb.addEventListener('click', () => jumpToPage(i));
     wrap.appendChild(thumb);
 
+    // 사용자가 추가한 앨범 페이지 → 삭제 버튼 (thumb-wrap에 붙여서 overflow:hidden 회피)
+    if (page._userAdded) {
+      const delBtn = document.createElement('button');
+      delBtn.className = 'thumb-delete';
+      delBtn.innerHTML = '&times;';
+      delBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        removeAlbumPage(i);
+      });
+      wrap.appendChild(delBtn);
+    }
+
     // 사진 필요 여부 판단
     let needsPhoto = false;
     if (page.isCover) {
       needsPhoto = !coverPhotoURL;
+    } else if (page.pageType === 'cover_photo') {
+      needsPhoto = !getCoverOriginalURL();
     } else if (page.pageType === 'frame') {
       needsPhoto = !pagePhotos.has(`frame_${page.scene}`);
-    } else if (page.pageType === 'polaroid_album') {
-      const slots = page.polaroidSlots || [];
-      needsPhoto = slots.some((_, si) => !pagePhotos.has(`polaroid_${page.scene}_${si}`));
+    } else if (page.pageType === 'epilogue_album') {
+      const templates = getAlbumTemplates();
+      const tmpl = templates[page.albumTemplateIndex];
+      if (tmpl) {
+        const offset = getAlbumSlotOffset(pages.indexOf(page) >= 0 ? pages.indexOf(page) : i);
+        needsPhoto = tmpl.regions.some((_, ri) => !albumPhotos[offset + ri]);
+      }
     }
     if (needsPhoto) {
       const label = document.createElement('div');
@@ -1805,22 +1903,140 @@ function renderThumbnails() {
 
     strip.appendChild(wrap);
   });
+
+  // 앨범 페이지 추가 버튼 (마지막 썸네일 뒤)
+  const addWrap = document.createElement('div');
+  addWrap.className = 'thumb-wrap';
+  const addBtn = document.createElement('div');
+  addBtn.className = 'thumb-add';
+  addBtn.innerHTML = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.5v15m7.5-7.5h-15"/></svg>`;
+  addBtn.addEventListener('click', () => openAlbumPicker());
+  addWrap.appendChild(addBtn);
+  strip.appendChild(addWrap);
+}
+
+function openAlbumPicker() {
+  document.getElementById('album-picker-backdrop').classList.add('open');
+}
+
+function closeAlbumPicker() {
+  document.getElementById('album-picker-backdrop').classList.remove('open');
+}
+
+function removeAlbumPage(pageIndex) {
+  const allPages = getPages();
+  const page = allPages[pageIndex];
+  if (!page || !page._userAdded) return;
+
+  const templates = getAlbumTemplates();
+  const tmpl = templates[page.albumTemplateIndex];
+  const offset = getAlbumSlotOffset(pageIndex);
+  const numSlots = tmpl ? tmpl.regions.length : 0;
+
+  // config에서 페이지 제거 (getPages 배열의 index 0 = 커버이므로 config index = pageIndex - 1)
+  const configPages = config.versions[currentVersion].pages;
+  const configIdx = pageIndex - 1; // 커버가 index 0
+  if (configIdx >= 0 && configIdx < configPages.length) {
+    configPages.splice(configIdx, 1);
+  }
+
+  // 앨범 사진 배열에서 해당 슬롯 제거
+  albumPhotos.splice(offset, numSlots);
+  albumPhotoURLs.splice(offset, numSlots);
+
+  // 선택 초기화
+  albumSelectedSlot = -1;
+
+  // 현재 페이지가 삭제 대상이면 이전 페이지로
+  const newPages = getPages();
+  if (currentPageIndex >= newPages.length) {
+    currentPageIndex = newPages.length - 1;
+  }
+
+  renderCarousel();
+  renderThumbnails();
+}
+
+function addAlbumPage(templateIndex) {
+  const templates = getAlbumTemplates();
+  if (templateIndex < 0 || templateIndex >= templates.length) return;
+
+  // 새 scene 번호 = 현재 마지막 scene + 1
+  const pages = config.versions[currentVersion].pages;
+  const lastScene = pages.length > 0 ? pages[pages.length - 1].scene : 0;
+  const newScene = lastScene + 1;
+
+  const newPage = {
+    scene: newScene,
+    title: `에필로그 ${newScene - 17}`,
+    pageType: 'epilogue_album',
+    albumTemplateIndex: templateIndex,
+    textPosition: 'none',
+    text: '',
+    _userAdded: true
+  };
+
+  pages.push(newPage);
+
+  // 앨범 사진 배열 확장
+  const tmpl = templates[templateIndex];
+  for (let i = 0; i < tmpl.regions.length; i++) {
+    albumPhotos.push(null);
+    albumPhotoURLs.push(null);
+  }
+
+  renderCarousel();
+  renderThumbnails();
+
+  // 새 페이지로 이동
+  const allPages = getPages();
+  setTimeout(() => jumpToPage(allPages.length - 1), 100);
+}
+
+// ========== Face-API.js 초기화 (다중 인물 감지용) ==========
+
+// Face-API.js — PipelineCore 공유 모듈 사용
+PipelineCore.loadFaceApi(); // 비동기 초기화 시작
+const detectFacesInFile = PipelineCore.detectFacesInFile;
+
+async function segmentChildWithSAM2(file, faces) {
+  if (!faces || faces.length < 2) return null;
+
+  // 얼굴 크기순 정렬 (내림차순) — 가장 작은 얼굴이 아이
+  const sorted = [...faces].sort((a, b) => (b.box.width * b.box.height) - (a.box.width * a.box.height));
+  const childFace = sorted[sorted.length - 1];
+  const adultFaces = sorted.slice(0, -1);
+
+  const childCenterX = childFace.box.x + childFace.box.width / 2;
+  const childCenterY = childFace.box.y + childFace.box.height / 2;
+  const negPoints = adultFaces.map(f => [
+    f.box.x + f.box.width / 2,
+    f.box.y + f.box.height / 2
+  ]);
+
+  console.log(`👶 SAM2 요청: 아이 (${childCenterX.toFixed(0)}, ${childCenterY.toFixed(0)}), 어른 ${negPoints.length}명`);
+
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('point_x', childCenterX.toString());
+  formData.append('point_y', childCenterY.toString());
+  if (negPoints.length > 0) {
+    formData.append('neg_points', JSON.stringify(negPoints));
+  }
+
+  const resp = await PipelineCore.fetchWithTimeout(`${SMART_CROP_API}/segment-child`, {
+    method: 'POST',
+    body: formData,
+  }, 90000);
+
+  if (!resp.ok) throw new Error(`SAM2 서버 오류: ${resp.status}`);
+  return resp;
 }
 
 // ========== Cover Photo (smart crop + remove.bg) ==========
 
-const SMART_CROP_API = location.hostname.includes('github.io')
-  ? 'https://ai.monviestory.co.kr'
-  : 'http://59.10.238.17:5001';
-
-const FETCH_TIMEOUT_MS = 60000;
-
-function fetchWithTimeout(url, options = {}, timeoutMs = FETCH_TIMEOUT_MS) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(url, { ...options, signal: controller.signal })
-    .finally(() => clearTimeout(timer));
-}
+const SMART_CROP_API = PipelineCore.API_URL;
+const fetchWithTimeout = PipelineCore.fetchWithTimeout;
 
 async function smartCropPerson(file) {
   const formData = new FormData();
@@ -1918,7 +2134,7 @@ function syncCandidateToGlobals(c) {
   coverPhotoURL = c.photoURL;
   coverPhotoOptions = c.photoOptions;
   selectedModelKey = c.selectedModelKey;
-  coverManualOffset = c.manualOffset;
+  coverManualOffsets = c.manualOffsets || {};
   coverCropData = c.cropData;
   coverCroppedFile = c.croppedFile;
   isRemovingBg = c.isProcessing;
@@ -1932,7 +2148,7 @@ function saveGlobalsToActiveCandidate() {
   c.photoURL = coverPhotoURL;
   c.photoOptions = coverPhotoOptions;
   c.selectedModelKey = selectedModelKey;
-  c.manualOffset = coverManualOffset;
+  c.manualOffsets = coverManualOffsets;
   c.cropData = coverCropData;
   c.croppedFile = coverCroppedFile;
   c.isProcessing = isRemovingBg;
@@ -1962,94 +2178,134 @@ async function processCandidate(candidate) {
   candidate.isProcessing = true;
   candidate.errorText = '';
   candidate.loadingText = '인물을 감지하는 중...';
+  candidate.photoOptions = {};
+  candidate.photoURL = null;
+  candidate.selectedModelKey = null;
+  candidate.failedModels = new Set();
   syncAndRender();
 
   try {
-    let fileToSend = candidate.originalFile;
-    candidate.cropData = null;
-    try {
-      const cropResult = await smartCropPerson(candidate.originalFile);
-      if (cropResult && cropResult.keypoints) {
-        if (cropResult.cropped && cropResult.crop) {
-          console.log('스마트 크롭 적용:', cropResult.crop);
-          try {
-            const croppedBlob = await cropImageOnCanvas(candidate.originalFile, cropResult.crop);
-            fileToSend = new File([croppedBlob], candidate.originalFile.name, { type: 'image/jpeg' });
-            candidate.cropData = { keypoints: cropResult.keypoints, refX: cropResult.crop.x, refY: cropResult.crop.y, refWidth: cropResult.crop.width, refHeight: cropResult.crop.height };
-          } catch (canvasErr) {
-            console.warn('캔버스 크롭 실패:', canvasErr.message);
-            candidate.cropData = { keypoints: cropResult.keypoints, refX: 0, refY: 0, refWidth: cropResult.image_width, refHeight: cropResult.image_height };
-          }
-        } else {
-          candidate.cropData = { keypoints: cropResult.keypoints, refX: 0, refY: 0, refWidth: cropResult.image_width, refHeight: cropResult.image_height };
-        }
-      }
-    } catch (e) {
-      const detail = e.name === 'AbortError' ? '타임아웃 (60초)' : e.message;
-      console.warn(`스마트 크롭 스킵: ${detail} (파일: ${candidate.originalFile.name}, 크기: ${(candidate.originalFile.size/1024).toFixed(0)}KB)`);
+    // 1. 이미지 로드
+    const img = await PipelineCore.blobToImage(candidate.originalFile);
+
+    // 2. 공유 DINO-Base 감지 (1회만 실행)
+    const sharedState = {
+      originalFile: candidate.originalFile,
+      originalImage: img,
+      detections: null,
+      vitposeResults: null,
+      sam2: null,
+      fullMaskCanvas: null,
+      resultImage: null,
+      resultBlob: null,
+    };
+
+    await PipelineCore.executePipelineStep('gdino-base', sharedState, {
+      params: { prompt: 'person', threshold: 0.50 },
+      skipInteraction: true,
+    });
+
+    if (!sharedState.detections) throw new Error('인물이 감지되지 않았습니다');
+
+    // 신뢰도 필터링 — 0.80 이상만 사용, 없으면 최고 score 1개 사용
+    const MIN_SCORE = 0.50;
+    let dinoBoxes = sharedState.detections.dinoBoxes || [];
+    const highConf = dinoBoxes.filter(d => d.score >= MIN_SCORE);
+    if (highConf.length > 0) {
+      dinoBoxes = highConf;
+    } else {
+      // 최고 confidence 1개만 사용
+      dinoBoxes = [...dinoBoxes].sort((a, b) => b.score - a.score).slice(0, 1);
+      console.warn(`DINO: 신뢰도 ${MIN_SCORE} 이상 없음. 최고 score ${dinoBoxes[0]?.score?.toFixed(2)} 사용`);
+    }
+    // 면적 기준 정렬 (작은 순 → 아이가 먼저)
+    const sorted = [...dinoBoxes].sort((a, b) => {
+      const aA = (a.box[2] - a.box[0]) * (a.box[3] - a.box[1]);
+      const bA = (b.box[2] - b.box[0]) * (b.box[3] - b.box[1]);
+      return aA - bA;
+    });
+
+    // 3. 인물 2명 이상이면 사용자 선택, 1명이면 자동 선택
+    let selectedIdx = 0;
+    if (sorted.length >= 2) {
+      candidate.loadingText = '';
+      syncAndRender();
+      selectedIdx = await showPersonSelectionModal(img, sorted);
     }
 
-    candidate.croppedFile = fileToSend;
+    // 선택한 인물로 detections 재구성
+    const childBox = sorted[selectedIdx];
+    const dinoBbox = childBox.box;
+    sharedState.detections = {
+      childFace: {
+        cx: (dinoBbox[0] + dinoBbox[2]) / 2,
+        cy: (dinoBbox[1] + dinoBbox[3]) / 2,
+        x: dinoBbox[0], y: dinoBbox[1],
+        width: dinoBbox[2] - dinoBbox[0],
+        height: dinoBbox[3] - dinoBbox[1],
+      },
+      adultFaces: sorted.filter((_, i) => i !== selectedIdx).map(d => ({
+        cx: (d.box[0] + d.box[2]) / 2,
+        cy: (d.box[1] + d.box[3]) / 2,
+        x: d.box[0], y: d.box[1],
+        width: d.box[2] - d.box[0],
+        height: d.box[3] - d.box[1],
+      })),
+      dinoBbox,
+      dinoBoxes: sorted,
+    };
+
+    // 4. 파이프라인 실행 (GPU → 순차, 외부API → 병렬)
     candidate.loadingText = '배경을 지우는 중...';
-    candidate.photoOptions = {};
-    candidate.photoURL = null;
-    candidate.selectedModelKey = null;
     syncAndRender();
 
-    const extractAndApply = async (resp, modelKey) => {
-      if (!resp.ok) {
-        console.warn(`[${modelKey}] 서버 응답 실패: ${resp.status} ${resp.statusText}`);
-        if (candidate.failedModels) candidate.failedModels.add(modelKey);
-        syncAndRender();
-        return;
-      }
-      const cropX = parseInt(resp.headers.get('X-Crop-X') || '0');
-      const cropY = parseInt(resp.headers.get('X-Crop-Y') || '0');
-      const blob = await resp.blob();
-      console.log(`[${modelKey}] 응답 수신: ${blob.size} bytes`);
+    const NON_GPU_MODELS = ['removebg'];
+    const isNonGpu = (p) => p.steps.every(s => NON_GPU_MODELS.includes(s.type) || s.type === 'crop');
+    const activePipelines = COVER_PIPELINES.filter(p => {
+      if (isNonGpu(p) && !useRemoveBg) return false;
+      return true;
+    });
+    const gpuPipelines = activePipelines.filter(p => !isNonGpu(p));
+    const extPipelines = activePipelines.filter(p => isNonGpu(p));
 
-      // Update placeholder thumbnail with actual image from server result
-      // Center on eye midpoint if keypoints available
+    async function runSinglePipeline(pipeline) {
+      const pipeState = {
+        originalFile: sharedState.originalFile,
+        originalImage: sharedState.originalImage,
+        detections: sharedState.detections ? { ...sharedState.detections } : null,
+        vitposeResults: null,
+        sam2: null,
+        fullMaskCanvas: null,
+        resultImage: null,
+        resultBlob: null,
+      };
+
+      for (const step of pipeline.steps) {
+        await PipelineCore.executePipelineStep(step.type, pipeState, {
+          params: step.params,
+          skipInteraction: true,
+          sam2Padding: 30,
+        });
+      }
+
+      if (!pipeState.resultBlob) throw new Error('결과 없음');
+
+      // Alpha 채널 정리 — 미세한 잔여 alpha 제거
+      try { pipeState.resultBlob = await PipelineCore.cleanAlpha(pipeState.resultBlob); } catch (e) { /* 원본 사용 */ }
+
+      const url = URL.createObjectURL(pipeState.resultBlob);
+      candidate.photoOptions[pipeline.key] = { url };
+      console.log(`[${pipeline.key}] 완료: ${pipeState.resultBlob.size} bytes`);
+
       if (!candidate._thumbFromResult) {
         try {
-          const bm = await createImageBitmap(blob);
+          const bm = await createImageBitmap(pipeState.resultBlob);
           const sz = 104, cv = document.createElement('canvas');
           cv.width = sz; cv.height = sz;
           const cx = cv.getContext('2d');
-
-          // Default: center crop
           let srcSize = Math.min(bm.width, bm.height);
           let srcX = (bm.width - srcSize) / 2;
           let srcY = (bm.height - srcSize) / 2;
-
-          // Eye-centered cropping
-          if (candidate.cropData && candidate.cropData.keypoints) {
-            const kps = candidate.cropData.keypoints;
-            const rX = candidate.cropData.refX || 0;
-            const rY = candidate.cropData.refY || 0;
-            const eyeL = kps.find(k => k.name === 'left_eye' && k.score > 0.3);
-            const eyeR = kps.find(k => k.name === 'right_eye' && k.score > 0.3);
-
-            if (eyeL || eyeR) {
-              const eyes = [eyeL, eyeR].filter(Boolean);
-              // Map keypoints from original image → blob coordinates
-              const midX = eyes.reduce((s, k) => s + (k.x - rX - cropX), 0) / eyes.length;
-              const midY = eyes.reduce((s, k) => s + (k.y - rY - cropY), 0) / eyes.length;
-
-              // Crop size: 4x eye distance (shows face + context), or 60% of shorter side
-              if (eyeL && eyeR) {
-                const eyeDist = Math.hypot(eyeL.x - eyeR.x, eyeL.y - eyeR.y);
-                srcSize = Math.min(Math.max(eyeDist * 4, 80), bm.width, bm.height);
-              } else {
-                srcSize = Math.min(bm.width, bm.height) * 0.6;
-              }
-
-              // Center on eye midpoint, clamp to bitmap bounds
-              srcX = Math.max(0, Math.min(midX - srcSize / 2, bm.width - srcSize));
-              srcY = Math.max(0, Math.min(midY - srcSize / 2, bm.height - srcSize));
-            }
-          }
-
           cx.fillStyle = '#f0f0f0';
           cx.fillRect(0, 0, sz, sz);
           cx.drawImage(bm, srcX, srcY, srcSize, srcSize, 0, 0, sz, sz);
@@ -2062,65 +2318,143 @@ async function processCandidate(candidate) {
         } catch (e) {}
       }
 
-      let url;
-      try {
-        if (candidate.cropData && candidate.cropData.refWidth && (cropX > 0 || cropY > 0)) {
-          url = await padImageToRef(blob, cropX, cropY, candidate.cropData.refWidth, candidate.cropData.refHeight);
-        } else {
-          url = URL.createObjectURL(blob);
-        }
-      } catch (padErr) {
-        console.warn(`[${modelKey}] padImageToRef 실패, 원본 사용:`, padErr.message);
-        url = URL.createObjectURL(blob);
-      }
-
-      candidate.photoOptions[modelKey] = { url };
-      const isFirstResult = !candidate.selectedModelKey;
-      if (!candidate.selectedModelKey || candidate.selectedModelKey === modelKey) {
+      if (!candidate.selectedModelKey) {
         candidate.photoURL = url;
-        candidate.selectedModelKey = modelKey;
+        candidate.selectedModelKey = pipeline.key;
         candidate.loadingText = '';
         candidate.isProcessing = false;
-      }
-      if (isFirstResult && coverCandidates[activeCandidateIndex] === candidate) {
-        pendingNudge = true;
+        if (isActive()) pendingNudge = true;
       }
       syncAndRender();
-    };
+    }
 
-    if (!candidate.failedModels) candidate.failedModels = new Set();
-    const activeModels = BG_REMOVE_MODELS.filter(m => m.key !== 'removebg' || useRemoveBg);
-    // Send removebg first — it uses external API, doesn't wait for server GPU
-    const sorted = [...activeModels].sort((a, b) => (a.key === 'removebg' ? -1 : b.key === 'removebg' ? 1 : 0));
-    const promises = sorted.map(m => {
-      const fd = new FormData();
-      fd.append('file', fileToSend);
-      return fetchWithTimeout(`${SMART_CROP_API}/remove-bg?model=${m.key}`, { method: 'POST', body: fd })
-        .then(r => extractAndApply(r, m.key))
-        .catch(e => {
-          const detail = e.name === 'AbortError' ? '타임아웃 (60초)' : e.message;
-          console.warn(`[${m.key}] fetch 실패: ${detail} (파일: ${fileToSend.name}, 크기: ${(fileToSend.size/1024).toFixed(0)}KB)`);
-          candidate.failedModels.add(m.key);
-          syncAndRender();
-        });
-    });
-    await Promise.allSettled(promises);
+    // 외부 API 파이프라인은 즉시 병렬 시작
+    const extPromises = extPipelines.map(p =>
+      runSinglePipeline(p).catch(err => {
+        console.warn(`[${p.key}] 파이프라인 실패:`, err.message);
+        candidate.failedModels.add(p.key);
+        syncAndRender();
+      })
+    );
+
+    // GPU 파이프라인은 순차 실행
+    for (const pipeline of gpuPipelines) {
+      try {
+        await runSinglePipeline(pipeline);
+      } catch (err) {
+        console.warn(`[${pipeline.key}] 파이프라인 실패:`, err.message);
+        candidate.failedModels.add(pipeline.key);
+        syncAndRender();
+      }
+    }
+
+    // 외부 API 완료 대기
+    await Promise.allSettled(extPromises);
 
     if (Object.keys(candidate.photoOptions).length === 0) {
       candidate.photoOptions = null;
-      throw new Error('모든 모델이 배경 제거에 실패했습니다.');
+      throw new Error('모든 파이프라인이 실패했습니다.');
     }
   } catch (e) {
     console.error('배경 제거 실패:', e);
     const isTimeout = e.name === 'AbortError';
     candidate.errorText = isTimeout
       ? '서버 응답 시간이 초과되었습니다'
-      : '사진 처리에 실패했습니다';
+      : e.message || '사진 처리에 실패했습니다';
   } finally {
     candidate.isProcessing = false;
     candidate.loadingText = '';
     syncAndRender();
   }
+}
+
+// ========== 인물 선택 모달 ==========
+
+function showPersonSelectionModal(img, sortedDetections) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('person-selection-modal');
+    const canvas = document.getElementById('person-selection-canvas');
+    const btnWrap = document.getElementById('person-selection-buttons');
+    if (!modal || !canvas) { resolve(0); return; }
+
+    const ctx = canvas.getContext('2d');
+
+    // 캔버스 크기: 뷰포트에 맞추기
+    const maxW = window.innerWidth - 40;
+    const maxH = window.innerHeight * 0.55;
+    const scale = Math.min(maxW / img.width, maxH / img.height, 1);
+    canvas.width = Math.round(img.width * scale);
+    canvas.height = Math.round(img.height * scale);
+
+    // 이미지 그리기
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+    // 감지 박스 + 번호 그리기
+    const colors = ['#00e676', '#ff9100', '#448aff', '#ff5252', '#e040fb'];
+    sortedDetections.forEach((det, i) => {
+      const [x1, y1, x2, y2] = det.box;
+      const sx = x1 * scale, sy = y1 * scale;
+      const sw = (x2 - x1) * scale, sh = (y2 - y1) * scale;
+      const color = colors[i % colors.length];
+
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3;
+      ctx.strokeRect(sx, sy, sw, sh);
+
+      // 번호 라벨
+      const fontSize = Math.max(18, Math.round(sh * 0.12));
+      ctx.font = `bold ${fontSize}px sans-serif`;
+      const label = `${i + 1}`;
+      const tw = ctx.measureText(label).width;
+      ctx.fillStyle = color;
+      ctx.fillRect(sx, sy - fontSize - 4, tw + 12, fontSize + 6);
+      ctx.fillStyle = '#000';
+      ctx.textBaseline = 'top';
+      ctx.fillText(label, sx + 6, sy - fontSize - 1);
+    });
+
+    // 버튼 생성
+    btnWrap.innerHTML = sortedDetections.map((det, i) => {
+      const score = det.score != null ? `${(det.score * 100).toFixed(0)}%` : '';
+      return `<button class="person-btn" data-idx="${i}" style="border-color:${colors[i % colors.length]}">
+        <span style="color:${colors[i % colors.length]};font-weight:700">${i + 1}</span>
+        <span>${score}</span>
+      </button>`;
+    }).join('');
+
+    modal.classList.add('visible');
+
+    function cleanup() {
+      modal.classList.remove('visible');
+      canvas.removeEventListener('click', onCanvasClick);
+      btnWrap.removeEventListener('click', onBtnClick);
+    }
+
+    function onCanvasClick(e) {
+      const rect = canvas.getBoundingClientRect();
+      const cx = (e.clientX - rect.left) / scale;
+      const cy = (e.clientY - rect.top) / scale;
+      for (let i = 0; i < sortedDetections.length; i++) {
+        const [x1, y1, x2, y2] = sortedDetections[i].box;
+        if (cx >= x1 && cx <= x2 && cy >= y1 && cy <= y2) {
+          cleanup();
+          resolve(i);
+          return;
+        }
+      }
+    }
+
+    function onBtnClick(e) {
+      const btn = e.target.closest('.person-btn');
+      if (!btn) return;
+      const idx = parseInt(btn.dataset.idx);
+      cleanup();
+      resolve(idx);
+    }
+
+    canvas.addEventListener('click', onCanvasClick);
+    btnWrap.addEventListener('click', onBtnClick);
+  });
 }
 
 function enqueueCandidate(candidate) {
@@ -2131,15 +2465,13 @@ function enqueueCandidate(candidate) {
 async function runProcessingQueue() {
   isProcessingQueue = true;
   while (processingQueue.length > 0) {
-    // Pick up to 3, prioritizing active candidate
-    const batch = [];
+    // 1개씩 순차 처리 (GPU 충돌 방지)
     const activeCandidate = coverCandidates[activeCandidateIndex];
     const activeIdx = processingQueue.findIndex(c => c === activeCandidate);
-    if (activeIdx !== -1) batch.push(processingQueue.splice(activeIdx, 1)[0]);
-    while (batch.length < 2 && processingQueue.length > 0) {
-      batch.push(processingQueue.shift());
-    }
-    await Promise.allSettled(batch.map(c => processCandidate(c)));
+    const next = activeIdx !== -1
+      ? processingQueue.splice(activeIdx, 1)[0]
+      : processingQueue.shift();
+    await processCandidate(next);
   }
   isProcessingQueue = false;
 }
@@ -2164,7 +2496,7 @@ async function handleCoverPhotos(files) {
       photoOptions: null,
       selectedModelKey: null,
       photoURL: null,
-      manualOffset: null,
+      manualOffsets: {},
       isProcessing: false,
       loadingText: ''
     };
@@ -2243,42 +2575,8 @@ function selectCoverModel(modelKey) {
   renderCoverControls();
 }
 
-function toggleRemoveBg(enabled) {
-  useRemoveBg = enabled;
-  localStorage.setItem('bookPreview_useRemoveBg', enabled);
-
-  const toggleEl = document.getElementById('removebg-toggle');
-  if (toggleEl) toggleEl.classList.toggle('active', enabled);
-
-  if (enabled && coverPhotoOptions && !coverPhotoOptions['removebg'] && coverCroppedFile) {
-    const fd = new FormData();
-    fd.append('file', coverCroppedFile);
-    fetchWithTimeout(`${SMART_CROP_API}/remove-bg?model=removebg`, { method: 'POST', body: fd })
-      .then(async (resp) => {
-        if (!resp.ok) return;
-        const blob = await resp.blob();
-        const url = URL.createObjectURL(blob);
-        const opt = { url };
-        coverPhotoOptions['removebg'] = opt;
-        renderCarousel();
-      })
-      .catch(e => console.warn('removebg 실패:', e));
-  }
-
-  if (!enabled && selectedModelKey === 'removebg') {
-    const fallback = coverPhotoOptions && (coverPhotoOptions['portrait'] || coverPhotoOptions['ben2'] || coverPhotoOptions['hr-matting']);
-    if (fallback) {
-      const fallbackKey = coverPhotoOptions['portrait'] ? 'portrait' : coverPhotoOptions['ben2'] ? 'ben2' : 'hr-matting';
-      selectCoverModel(fallbackKey);
-    }
-  }
-
-  renderCarousel();
-}
-
 function startCoverPositionEdit() {
   isEditingCoverPos = true;
-  if (!coverManualOffset) coverManualOffset = { dx: 0, dy: 0, rotation: 0 };
 
   const childImg = document.querySelector('.cover-child-img');
   if (!childImg) return;
@@ -2306,8 +2604,9 @@ function startCoverPositionEdit() {
     const pt = e.touches ? e.touches[0] : e;
     startX = pt.clientX;
     startY = pt.clientY;
-    startDx = coverManualOffset.dx;
-    startDy = coverManualOffset.dy;
+    const mo = getCoverOffset();
+    startDx = mo.dx;
+    startDy = mo.dy;
     childImg.style.transition = 'none';
   };
   const onMove = (e) => {
@@ -2317,8 +2616,9 @@ function startCoverPositionEdit() {
     const wrapRect = wrap.getBoundingClientRect();
     const dx = ((pt.clientX - startX) / wrapRect.width) * 100;
     const dy = ((pt.clientY - startY) / wrapRect.height) * 100;
-    coverManualOffset.dx = startDx + dx;
-    coverManualOffset.dy = startDy + dy;
+    const mo = getCoverOffset();
+    mo.dx = startDx + dx;
+    mo.dy = startDy + dy;
     applyCoverManualOffset(childImg);
   };
   const onEnd = () => {
@@ -2350,20 +2650,23 @@ function startCoverPositionEdit() {
   const resetBtn = controlsEl.querySelector('.cover-pos-reset');
   if (doneBtn) doneBtn.addEventListener('click', cleanup);
   if (resetBtn) resetBtn.addEventListener('click', () => {
-    coverManualOffset = { dx: 0, dy: 0, rotation: 0 };
+    coverManualOffsets[selectedModelKey] = { dx: 0, dy: 0, rotation: 0 };
     applyCoverManualOffset(childImg);
   });
 }
 
 function applyCoverManualOffset(childImg) {
   if (!childImg) childImg = document.querySelector('.cover-child-img');
-  if (!childImg || !coverManualOffset) return;
+  if (!childImg) return;
+  const mo = getCoverOffset();
   const pos = computeChildPosition();
-  if (!pos) return;
-  const tx = (pos.leftOffset - 50) + coverManualOffset.dx;
-  const ty = coverManualOffset.dy;
-  const rot = coverManualOffset.rotation || 0;
-  childImg.style.cssText = `height:${pos.height.toFixed(1)}%;top:${(pos.top + ty).toFixed(1)}%;left:50%;transform:translateX(${tx.toFixed(1)}%) rotate(${rot}deg)`;
+  if (pos) {
+    const tx = (pos.leftOffset - 50) + mo.dx;
+    childImg.style.cssText = `height:${pos.height.toFixed(1)}%;top:${(pos.top + mo.dy).toFixed(1)}%;left:50%;transform:translateX(${tx.toFixed(1)}%) rotate(${mo.rotation}deg)`;
+  } else {
+    const dx = -50 + mo.dx;
+    childImg.style.cssText = `height:80%;bottom:${(-mo.dy).toFixed(1)}%;left:50%;transform:translateX(${dx.toFixed(1)}%) rotate(${mo.rotation}deg)`;
+  }
 }
 
 function setupCoverEvents() {
@@ -2379,16 +2682,18 @@ function setupCoverEvents() {
   if (removebgToggle) {
     if (useRemoveBg) removebgToggle.classList.add('active');
     removebgToggle.addEventListener('click', () => {
-      toggleRemoveBg(!useRemoveBg);
+      useRemoveBg = !useRemoveBg;
+      localStorage.setItem('bookPreview_useRemoveBg', useRemoveBg);
+      removebgToggle.classList.toggle('active', useRemoveBg);
     });
   }
 
   // Delegate clicks for cover controls (in bottom panel + carousel)
   document.addEventListener('click', (e) => {
-    // Frame / Polaroid slot click → trigger file input
-    const frameWrap = e.target.closest('.baby-frame-wrap');
-    if (frameWrap) {
-      const slotKey = frameWrap.dataset.slotKey;
+    // Frame page zone click → trigger file input
+    const frameZone = e.target.closest('.frame-page-zone');
+    if (frameZone) {
+      const slotKey = frameZone.dataset.slotKey;
       if (slotKey) triggerPagePhotoInput(slotKey);
       return;
     }
@@ -2399,25 +2704,38 @@ function setupCoverEvents() {
       if (hint) hint.remove();
       return;
     }
-    // Polaroid hint dismiss
-    if (e.target.closest('.polaroid-hint-close')) {
-      window._polaroidHintDismissed = true;
-      const hint = e.target.closest('.polaroid-hint');
+    // Album hint dismiss
+    if (e.target.closest('.album-hint-close')) {
+      window._albumHintDismissed = true;
+      const hint = e.target.closest('.album-hint');
       if (hint) hint.remove();
       return;
     }
 
-    const polaroidSlot = e.target.closest('.polaroid-slot');
-    if (polaroidSlot) {
-      if (polaroidDragJustEnded) return;
-      const slotKey = polaroidSlot.dataset.slotKey;
-      if (!slotKey) return;
-      if (pagePhotos.has(slotKey)) {
-        triggerPagePhotoInput(slotKey);
-      } else {
-        const scene = parseInt(slotKey.split('_')[1]);
-        triggerPolaroidMultiInput(scene);
-      }
+    // Album page upload button
+    const albumUploadBtn = e.target.closest('.album-page-upload-btn');
+    if (albumUploadBtn) {
+      const offset = parseInt(albumUploadBtn.dataset.albumOffset);
+      const count = parseInt(albumUploadBtn.dataset.albumCount);
+      albumPendingPageUpload = { offset, count };
+      document.getElementById('album-page-file-input').click();
+      return;
+    }
+
+    // Album save button
+    const albumSaveBtn = e.target.closest('.album-save-btn');
+    if (albumSaveBtn) {
+      const pageIdx = parseInt(albumSaveBtn.dataset.albumSavePage);
+      albumSavePage(pageIdx);
+      return;
+    }
+
+    // Album frame zone click (desktop — touch handled separately)
+    const albumZone = e.target.closest('.album-frame-zone');
+    if (albumZone && albumZone.dataset.albumSlot !== undefined) {
+      // Touch already handled it, skip if within 300ms
+      if (albumIsDragging2) return;
+      albumHandleTap(parseInt(albumZone.dataset.albumSlot));
       return;
     }
 
@@ -2456,69 +2774,86 @@ function setupCoverEvents() {
     }
   });
 
-  // Desktop polaroid drag (mouse events)
-  let mousePolSlot = null;
-  let mousePolContainer = null;
-  let mousePolStartX = 0;
-  let mousePolStartY = 0;
-  let mousePolStartDx = 0;
-  let mousePolStartDy = 0;
-  let mousePolDragging = false;
-
-  document.addEventListener('mousedown', (e) => {
-    const slot = e.target.closest('.polaroid-slot');
-    if (!slot || !slot.dataset.slotKey) return;
-    const slotKey = slot.dataset.slotKey;
-    const existing = polaroidOffsets.get(slotKey) || { dx: 0, dy: 0 };
-    mousePolSlot = slot;
-    mousePolContainer = slot.closest('.polaroid-container');
-    mousePolStartX = e.clientX;
-    mousePolStartY = e.clientY;
-    mousePolStartDx = existing.dx;
-    mousePolStartDy = existing.dy;
-    mousePolDragging = false;
-  });
-
-  document.addEventListener('mousemove', (e) => {
-    if (!mousePolSlot) return;
-    const dx = e.clientX - mousePolStartX;
-    const dy = e.clientY - mousePolStartY;
-    if (!mousePolDragging && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
-      mousePolDragging = true;
-      mousePolSlot.style.transition = 'none';
-      mousePolSlot.style.zIndex = '10';
-    }
-    if (mousePolDragging) {
-      e.preventDefault();
-      const containerRect = mousePolContainer.getBoundingClientRect();
-      const pctDx = (dx / containerRect.width) * 100;
-      const pctDy = (dy / containerRect.height) * 100;
-      const origX = parseFloat(mousePolSlot.dataset.origX);
-      const origY = parseFloat(mousePolSlot.dataset.origY);
-      mousePolSlot.style.left = `${origX + mousePolStartDx + pctDx}%`;
-      mousePolSlot.style.top = `${origY + mousePolStartDy + pctDy}%`;
-      mousePolSlot._tempDx = mousePolStartDx + pctDx;
-      mousePolSlot._tempDy = mousePolStartDy + pctDy;
-    }
-  });
-
-  document.addEventListener('mouseup', () => {
-    if (!mousePolSlot) return;
-    if (mousePolDragging) {
-      const slotKey = mousePolSlot.dataset.slotKey;
-      if (mousePolSlot._tempDx != null) {
-        polaroidOffsets.set(slotKey, { dx: mousePolSlot._tempDx, dy: mousePolSlot._tempDy });
-        delete mousePolSlot._tempDx;
-        delete mousePolSlot._tempDy;
+  // Album file input handlers
+  document.getElementById('album-single-file-input').addEventListener('change', async (e) => {
+    if (e.target.files.length > 0 && albumPendingSlot >= 0) {
+      try {
+        const { img, url } = await loadAlbumImageFromFile(e.target.files[0]);
+        albumPhotos[albumPendingSlot] = img;
+        albumPhotoURLs[albumPendingSlot] = url;
+        albumRefreshSlot(albumPendingSlot);
+        renderThumbnails();
+      } catch (err) {
+        console.error('Album photo load failed:', err);
       }
-      mousePolSlot.style.transition = '';
-      mousePolSlot.style.zIndex = '';
-      polaroidDragJustEnded = true;
-      setTimeout(() => { polaroidDragJustEnded = false; }, 300);
+      albumPendingSlot = -1;
     }
-    mousePolSlot = null;
-    mousePolContainer = null;
-    mousePolDragging = false;
+    e.target.value = '';
+  });
+
+  document.getElementById('album-page-file-input').addEventListener('change', async (e) => {
+    if (e.target.files.length > 0 && albumPendingPageUpload) {
+      const { offset, count } = albumPendingPageUpload;
+      const files = Array.from(e.target.files).slice(0, count);
+      for (let i = 0; i < files.length && i < count; i++) {
+        try {
+          const { img, url } = await loadAlbumImageFromFile(files[i]);
+          albumPhotos[offset + i] = img;
+          albumPhotoURLs[offset + i] = url;
+          albumRefreshSlot(offset + i);
+        } catch (err) {
+          console.error('Album photo load failed:', err);
+        }
+      }
+      renderThumbnails();
+      albumPendingPageUpload = null;
+    }
+    e.target.value = '';
+  });
+
+  document.getElementById('album-file-input').addEventListener('change', async (e) => {
+    if (e.target.files.length === 0) return;
+    initAlbumArrays();
+    const total = getAlbumTotalSlots();
+    const files = Array.from(e.target.files).slice(0, total);
+    let nextEmpty = 0;
+    for (const file of files) {
+      while (nextEmpty < total && albumPhotos[nextEmpty]) nextEmpty++;
+      if (nextEmpty >= total) break;
+      try {
+        const { img, url } = await loadAlbumImageFromFile(file);
+        albumPhotos[nextEmpty] = img;
+        albumPhotoURLs[nextEmpty] = url;
+        albumRefreshSlot(nextEmpty);
+        nextEmpty++;
+      } catch (err) {
+        console.error('Album photo load failed:', err);
+      }
+    }
+    renderThumbnails();
+    e.target.value = '';
+  });
+
+  // Click outside album zones to deselect
+  document.addEventListener('click', (e) => {
+    if (albumSelectedSlot === -1) return;
+    if (e.target.closest('.album-frame-zone')) return;
+    if (e.target.closest('.album-page-upload-btn')) return;
+    const zone = document.querySelector(`.album-frame-zone[data-album-slot="${albumSelectedSlot}"]`);
+    if (zone) zone.classList.remove('selected');
+    albumSelectedSlot = -1;
+  });
+
+  // Album frame picker modal
+  document.getElementById('album-picker-backdrop').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeAlbumPicker();
+  });
+  document.querySelectorAll('.album-picker-opt').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tmplIdx = parseInt(btn.dataset.albumTemplate);
+      closeAlbumPicker();
+      addAlbumPage(tmplIdx);
+    });
   });
 }
 
@@ -2728,7 +3063,6 @@ document.addEventListener('DOMContentLoaded', () => {
   cacheDom();
   setupEvents();
   setupCoverEvents();
-  initFramePhotoDrag();
   initGuideModal();
   loadConfig();
   window.addEventListener('resize', () => {
