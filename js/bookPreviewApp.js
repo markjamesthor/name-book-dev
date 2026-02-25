@@ -64,12 +64,14 @@ let coverErrorText = '';
 let coverCropData = null;
 let coverPhotoOptions = null;
 let selectedModelKey = null;
-let coverManualOffsets = {};  // modelKey → { dx, dy, rotation }
+let coverManualOffsets = {};  // modelKey → { dx, dy, rotation, scale }
 // 현재 선택된 모델의 오프셋 접근 헬퍼
 function getCoverOffset() {
-  if (!selectedModelKey) return { dx: 0, dy: 0, rotation: 0 };
-  if (!coverManualOffsets[selectedModelKey]) coverManualOffsets[selectedModelKey] = { dx: 0, dy: 0, rotation: 0 };
-  return coverManualOffsets[selectedModelKey];
+  if (!selectedModelKey) return { dx: 0, dy: 0, rotation: 0, scale: 1 };
+  if (!coverManualOffsets[selectedModelKey]) coverManualOffsets[selectedModelKey] = { dx: 0, dy: 0, rotation: 0, scale: 1 };
+  const mo = coverManualOffsets[selectedModelKey];
+  if (mo.scale == null) mo.scale = 1;
+  return mo;
 }
 let isEditingCoverPos = false;
 let coverCroppedFile = null;
@@ -336,12 +338,13 @@ function buildCoverContent() {
     const pos = computeChildPosition();
     let childStyle;
     const mo = getCoverOffset();
+    const sc = mo.scale != null ? mo.scale : 1;
     if (pos) {
       const tx = (pos.leftOffset - 50) + mo.dx;
-      childStyle = `height:${pos.height.toFixed(1)}%;top:${(pos.top + mo.dy).toFixed(1)}%;left:50%;transform:translateX(${tx.toFixed(1)}%) rotate(${mo.rotation}deg)`;
+      childStyle = `height:${pos.height.toFixed(1)}%;top:${(pos.top + mo.dy).toFixed(1)}%;left:50%;transform:translateX(${tx.toFixed(1)}%) rotate(${mo.rotation}deg) scale(${sc.toFixed(3)})`;
     } else {
       const dx = -50 + mo.dx;
-      childStyle = `height:80%;bottom:${(-mo.dy).toFixed(1)}%;left:50%;transform:translateX(${dx.toFixed(1)}%) rotate(${mo.rotation}deg)`;
+      childStyle = `height:80%;bottom:${(-mo.dy).toFixed(1)}%;left:50%;transform:translateX(${dx.toFixed(1)}%) rotate(${mo.rotation}deg) scale(${sc.toFixed(3)})`;
     }
     const wrapStyle = getCoverLayoutStyle();
     const nudgeClass = pendingNudge ? ' nudge' : '';
@@ -1336,10 +1339,12 @@ function setupCarouselTouch(track) {
   let childDragStartDx = 0;
   let childDragStartDy = 0;
   let childDragPending = false; // waiting to confirm single-finger drag
-  // Child rotation state (two-finger)
+  // Child rotation + pinch scale state (two-finger)
   let childRotating = false;
   let childRotStartAngle = 0;
   let childRotStartRotation = 0;
+  let childPinchStartDist = 0;
+  let childPinchStartScale = 1;
 
   // Album frame drag state
   let albumDragSlotEl = null;
@@ -1353,7 +1358,7 @@ function setupCarouselTouch(track) {
   track.addEventListener('touchstart', (e) => {
     if (isAnimating) return;
 
-    // If a second finger arrives while child drag is pending → switch to rotation
+    // If a second finger arrives while child drag is pending → switch to rotation+scale
     if (childDragPending && e.touches.length === 2) {
       childDragPending = false;
       isEditingCoverPos = true;
@@ -1361,6 +1366,8 @@ function setupCarouselTouch(track) {
       const t = e.touches;
       childRotStartAngle = Math.atan2(t[1].clientY - t[0].clientY, t[1].clientX - t[0].clientX) * 180 / Math.PI;
       childRotStartRotation = getCoverOffset().rotation;
+      childPinchStartDist = Math.hypot(t[1].clientX - t[0].clientX, t[1].clientY - t[0].clientY);
+      childPinchStartScale = getCoverOffset().scale || 1;
       return;
     }
 
@@ -1438,13 +1445,17 @@ function setupCarouselTouch(track) {
   track.addEventListener('touchmove', (e) => {
     if (isAnimating || albumIsDragging2) return;
 
-    // Child rotation (two-finger on child photo)
+    // Child rotation + pinch scale (two-finger on child photo)
     if (childRotating && childDragImg && e.touches.length === 2) {
       e.preventDefault();
       const mo = getCoverOffset();
       const t = e.touches;
       const angle = Math.atan2(t[1].clientY - t[0].clientY, t[1].clientX - t[0].clientX) * 180 / Math.PI;
       mo.rotation = childRotStartRotation + (angle - childRotStartAngle);
+      const dist = Math.hypot(t[1].clientX - t[0].clientX, t[1].clientY - t[0].clientY);
+      if (childPinchStartDist > 0) {
+        mo.scale = Math.max(0.3, Math.min(3, childPinchStartScale * (dist / childPinchStartDist)));
+      }
       childDragImg.style.transition = 'none';
       applyCoverManualOffset(childDragImg);
       return;
@@ -1453,13 +1464,15 @@ function setupCarouselTouch(track) {
     // Cover child drag: pending → confirm or cancel
     if (childDragPending && childDragImg) {
       if (e.touches.length >= 2) {
-        // Second finger arrived → switch to rotation
+        // Second finger arrived → switch to rotation+scale
         childDragPending = false;
         isEditingCoverPos = true;
         childRotating = true;
         const t = e.touches;
         childRotStartAngle = Math.atan2(t[1].clientY - t[0].clientY, t[1].clientX - t[0].clientX) * 180 / Math.PI;
         childRotStartRotation = getCoverOffset().rotation;
+        childPinchStartDist = Math.hypot(t[1].clientX - t[0].clientX, t[1].clientY - t[0].clientY);
+        childPinchStartScale = getCoverOffset().scale || 1;
         return;
       } else {
         // Single finger move → confirm child drag
@@ -2658,7 +2671,7 @@ function startCoverPositionEdit() {
   const resetBtn = controlsEl.querySelector('.cover-pos-reset');
   if (doneBtn) doneBtn.addEventListener('click', cleanup);
   if (resetBtn) resetBtn.addEventListener('click', () => {
-    coverManualOffsets[selectedModelKey] = { dx: 0, dy: 0, rotation: 0 };
+    coverManualOffsets[selectedModelKey] = { dx: 0, dy: 0, rotation: 0, scale: 1 };
     applyCoverManualOffset(childImg);
   });
 }
@@ -2667,13 +2680,14 @@ function applyCoverManualOffset(childImg) {
   if (!childImg) childImg = document.querySelector('.cover-child-img');
   if (!childImg) return;
   const mo = getCoverOffset();
+  const sc = mo.scale != null ? mo.scale : 1;
   const pos = computeChildPosition();
   if (pos) {
     const tx = (pos.leftOffset - 50) + mo.dx;
-    childImg.style.cssText = `height:${pos.height.toFixed(1)}%;top:${(pos.top + mo.dy).toFixed(1)}%;left:50%;transform:translateX(${tx.toFixed(1)}%) rotate(${mo.rotation}deg)`;
+    childImg.style.cssText = `height:${pos.height.toFixed(1)}%;top:${(pos.top + mo.dy).toFixed(1)}%;left:50%;transform:translateX(${tx.toFixed(1)}%) rotate(${mo.rotation}deg) scale(${sc.toFixed(3)})`;
   } else {
     const dx = -50 + mo.dx;
-    childImg.style.cssText = `height:80%;bottom:${(-mo.dy).toFixed(1)}%;left:50%;transform:translateX(${dx.toFixed(1)}%) rotate(${mo.rotation}deg)`;
+    childImg.style.cssText = `height:80%;bottom:${(-mo.dy).toFixed(1)}%;left:50%;transform:translateX(${dx.toFixed(1)}%) rotate(${mo.rotation}deg) scale(${sc.toFixed(3)})`;
   }
 }
 
