@@ -393,15 +393,11 @@ function buildCoverContent() {
       </div>`;
   }
 
-  // Loading state
+  // Loading state — blur 영역만 유지 (스피너 없음)
   if (isRemovingBg) {
     return `
       <div class="slide-img-wrap">${imgContent}${titleHtml}</div>
       <div class="page-text-overlay text-pos-center" style="${bgVar}color:white">
-        <div class="page-text-scroll">
-          <div class="cover-spinner"></div>
-          <div class="cover-loading-text">${coverLoadingText || '처리 중...'}</div>
-        </div>
       </div>`;
   }
 
