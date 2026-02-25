@@ -1891,7 +1891,7 @@ function renderThumbnails() {
     if (page.isCover) {
       needsPhoto = !coverPhotoURL;
     } else if (page.pageType === 'cover_photo') {
-      needsPhoto = !getCoverOriginalURL();
+      needsPhoto = !coverPhotoURL;
     } else if (page.pageType === 'frame') {
       needsPhoto = !pagePhotos.has(`frame_${page.scene}`);
     } else if (page.pageType === 'epilogue_album') {
