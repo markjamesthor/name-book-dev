@@ -322,7 +322,7 @@ function buildCoverContent() {
 
   const frontStyle = getCoverLayoutStyle();
   let imgContent = `<div class="page-bg-blur" style="background-image:url('${bgPath}')"></div>
-    <img class="page-bg-img" src="${bgPath}" alt="커버" style="object-fit:contain;object-position:center;" />
+    <img class="page-bg-img" src="${bgPath}" alt="커버" />
     <div class="cover-front-wrap"${frontStyle ? ` style="${frontStyle}"` : ''}><img class="cover-front-img" src="NAME/cover_front_3.webp" /></div>`;
 
   // Child photo displayed
@@ -397,10 +397,17 @@ function buildCoverContent() {
       </div></div>`;
   }
 
-  // No photo — hint to use 사진 tab
+  // No photo — show intro text with blur overlay (same layout as story pages)
+  const blurTextMap = config.illustrationsBlurText || {};
+  const blurTextPath = blurTextMap['cover_bg'] || bgPath;
+  const bgVar = blurTextPath ? `--page-bg-url:url('${blurTextPath}');` : '';
   return `
-    <div class="slide-img-wrap" data-layout="cover">${imgContent}${titleHtml}</div>
-`;
+    <div class="slide-img-wrap">${imgContent}${titleHtml}</div>
+    <div class="page-text-overlay text-pos-center" style="${bgVar}color:white">
+      <div class="page-text-scroll">
+        <div class="page-story-text">아이 사진을 올려보세요.<br>아이가 멋진 주인공인 동화책이 탄생합니다.</div>
+      </div>
+    </div>`;
 }
 
 // Update candidate list DOM — preserves <img> elements to avoid reload flicker
@@ -524,7 +531,7 @@ function buildSlideContent(pageIndex) {
     blurBgPath = blurMap[page.illustration] || imgPath;
     blurTextPath = blurTextMap[page.illustration] || imgPath;
     imgContent = `<div class="page-bg-blur" style="background-image:url('${blurBgPath}')"></div>
-      <img class="page-bg-img" src="${imgPath}" alt="${page.title}" style="object-fit:cover;object-position:center;" />`;
+      <img class="page-bg-img" src="${imgPath}" alt="${page.title}" />`;
   } else if (page.bgGradient) {
     imgContent = `<div class="page-bg-gradient" style="background:${page.bgGradient}"></div>`;
   }
