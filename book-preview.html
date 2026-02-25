@@ -1264,8 +1264,8 @@
   .slide-img-wrap {
     position: relative;
     flex: none;
-    min-height: 50%;
-    max-height: 65%;
+    width: 100%;
+    aspect-ratio: 2592 / 1824;
     overflow: hidden;
   }
 
@@ -1294,8 +1294,8 @@
     height: 100%;
     display: block;
     z-index: 1;
-    object-fit: contain;
-    object-position: center top;
+    object-fit: cover;
+    object-position: center;
   }
 
   .carousel-slide .page-text-overlay {
