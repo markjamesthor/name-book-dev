@@ -17,35 +17,17 @@
   /* ===== Reset & Base ===== */
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
-  html {
-    background: #e8e8e8;
-    height: 100vh;
-    height: 100dvh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
   body {
     font-family: 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
     background: #fff;
     color: #1a1a1a;
-    width: 100%;
-    max-width: 500px;
     height: 100vh;
     height: 100dvh;
-    max-height: 950px;
     display: flex;
     flex-direction: column;
     overflow: hidden;
     user-select: none;
     -webkit-user-select: none;
-    border-radius: 0;
-  }
-  @media (min-width: 501px) {
-    body {
-      border-radius: 20px;
-      box-shadow: 0 4px 40px rgba(0,0,0,0.15);
-    }
   }
 
   /* ===== Top Bar (purple) ===== */
@@ -272,7 +254,6 @@
   .page-viewer-wrap {
     position: relative;
     width: 100%;
-    max-width: 480px;
     flex: 1;
     min-height: 200px;
   }
@@ -1309,9 +1290,9 @@
   }
   .slide-img-wrap {
     position: relative;
-    flex: none;
+    flex: 3;
+    min-height: 0;
     width: 100%;
-    aspect-ratio: 2592 / 1824;
     overflow: hidden;
   }
 
