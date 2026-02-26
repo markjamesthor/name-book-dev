@@ -2210,7 +2210,12 @@ async function processCandidate(candidate) {
 
   try {
     // 1. 이미지 로드
-    const img = await PipelineCore.blobToImage(candidate.originalFile);
+    let img;
+    try {
+      img = await PipelineCore.blobToImage(candidate.originalFile);
+    } catch (e) {
+      throw new Error(`이미지 로드 실패: ${candidate.originalFile.name} (${candidate.originalFile.type || '알 수 없는 형식'})`);
+    }
 
     // 2. 공유 DINO-Base 감지 (1회만 실행)
     const sharedState = {
@@ -2224,12 +2229,16 @@ async function processCandidate(candidate) {
       resultBlob: null,
     };
 
-    await PipelineCore.executePipelineStep('gdino-base', sharedState, {
-      params: { prompt: 'person', threshold: 0.50 },
-      skipInteraction: true,
-    });
+    try {
+      await PipelineCore.executePipelineStep('gdino-base', sharedState, {
+        params: { prompt: 'person', threshold: 0.50 },
+        skipInteraction: true,
+      });
+    } catch (e) {
+      throw new Error(`인물 감지(DINO) 실패: ${e.message}`);
+    }
 
-    if (!sharedState.detections) throw new Error('인물이 감지되지 않았습니다');
+    if (!sharedState.detections) throw new Error('인물이 감지되지 않았습니다 (DINO 응답에 detections 없음)');
 
     // 신뢰도 필터링 — 0.80 이상만 사용, 없으면 최고 score 1개 사용
     const MIN_SCORE = 0.50;
@@ -2305,14 +2314,18 @@ async function processCandidate(candidate) {
       };
 
       for (const step of pipeline.steps) {
-        await PipelineCore.executePipelineStep(step.type, pipeState, {
-          params: step.params,
-          skipInteraction: true,
-          sam2Padding: 30,
-        });
+        try {
+          await PipelineCore.executePipelineStep(step.type, pipeState, {
+            params: step.params,
+            skipInteraction: true,
+            sam2Padding: 30,
+          });
+        } catch (stepErr) {
+          throw new Error(`[${step.type}] ${stepErr.message}`);
+        }
       }
 
-      if (!pipeState.resultBlob) throw new Error('결과 없음');
+      if (!pipeState.resultBlob) throw new Error('결과 blob 없음');
 
       // Alpha 채널 정리 — 미세한 잔여 alpha 제거
       try { pipeState.resultBlob = await PipelineCore.cleanAlpha(pipeState.resultBlob); } catch (e) { /* 원본 사용 */ }
@@ -2353,10 +2366,12 @@ async function processCandidate(candidate) {
     }
 
     // 외부 API 파이프라인은 즉시 병렬 시작
+    const failReasons = [];
     const extPromises = extPipelines.map(p =>
       runSinglePipeline(p).catch(err => {
         console.warn(`[${p.key}] 파이프라인 실패:`, err.message);
         candidate.failedModels.add(p.key);
+        failReasons.push(`${p.key}: ${err.message}`);
         syncAndRender();
       })
     );
@@ -2368,6 +2383,7 @@ async function processCandidate(candidate) {
       } catch (err) {
         console.warn(`[${pipeline.key}] 파이프라인 실패:`, err.message);
         candidate.failedModels.add(pipeline.key);
+        failReasons.push(`${pipeline.key}: ${err.message}`);
         syncAndRender();
       }
     }
@@ -2377,13 +2393,13 @@ async function processCandidate(candidate) {
 
     if (Object.keys(candidate.photoOptions).length === 0) {
       candidate.photoOptions = null;
-      throw new Error('모든 파이프라인이 실패했습니다.');
+      throw new Error(`모든 파이프라인 실패\n${failReasons.join('\n')}`);
     }
   } catch (e) {
-    console.error('배경 제거 실패:', e);
+    console.error('처리 실패:', e);
     const isTimeout = e.name === 'AbortError';
     candidate.errorText = isTimeout
-      ? '서버 응답 시간이 초과되었습니다'
+      ? '서버 응답 시간 초과'
       : e.message || '사진 처리에 실패했습니다';
   } finally {
     candidate.isProcessing = false;
