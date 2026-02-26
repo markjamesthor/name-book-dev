@@ -1290,9 +1290,9 @@
   }
   .slide-img-wrap {
     position: relative;
-    flex: 3;
-    min-height: 0;
+    flex: none;
     width: 100%;
+    aspect-ratio: 2592 / 1824;
     overflow: hidden;
   }
 
@@ -1377,11 +1377,11 @@
 
   .input-group input { font-size: 16px; }
 
-  /* ===== Desktop: 센터링 + 배경색 + 모바일 폭 유지 ===== */
-  @media (min-width: 769px) {
+  /* ===== Desktop: 센터링 + 배경색 ===== */
+  @media (min-width: 1024px) {
     body { align-items: center; background: #e8e8e8; }
     .top-bar, .preview-area, .step-bar, .bottom-panel, .page-counter-bar {
-      max-width: 480px;
+      max-width: 700px;
       width: 100%;
     }
   }
