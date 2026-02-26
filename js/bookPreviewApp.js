@@ -725,16 +725,39 @@ function initAlbumArrays() {
 
 async function convertHeicIfNeeded(file) {
   const name = (file.name || '').toLowerCase();
-  if (name.endsWith('.heic') || name.endsWith('.heif')) {
-    if (typeof heic2any !== 'undefined') {
-      console.log(`HEIC 변환 시작: ${file.name}`);
+  if (!name.endsWith('.heic') && !name.endsWith('.heif')) return file;
+
+  const jpgName = file.name.replace(/\.heic$/i, '.jpg').replace(/\.heif$/i, '.jpg');
+
+  // 1) heic2any 시도
+  if (typeof heic2any !== 'undefined') {
+    try {
+      console.log(`HEIC 변환(heic2any) 시작: ${file.name}`);
       const blob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 1.0 });
-      const converted = new File([blob], file.name.replace(/\.heic$/i, '.jpg').replace(/\.heif$/i, '.jpg'), { type: 'image/jpeg' });
+      const converted = new File([blob], jpgName, { type: 'image/jpeg' });
       console.log(`HEIC 변환 완료: ${converted.name} (${(converted.size / 1024).toFixed(0)}KB)`);
       return converted;
+    } catch (e) {
+      console.warn(`heic2any 실패: ${e.message}, createImageBitmap 폴백 시도`);
     }
   }
-  return file;
+
+  // 2) createImageBitmap 폴백 (Safari 등 네이티브 HEIC 지원 브라우저)
+  try {
+    const bitmap = await createImageBitmap(file);
+    const canvas = document.createElement('canvas');
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    canvas.getContext('2d').drawImage(bitmap, 0, 0);
+    bitmap.close();
+    const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.95));
+    const converted = new File([blob], jpgName, { type: 'image/jpeg' });
+    console.log(`HEIC 변환(bitmap 폴백) 완료: ${converted.name} (${(converted.size / 1024).toFixed(0)}KB)`);
+    return converted;
+  } catch (e2) {
+    console.error(`HEIC 변환 모두 실패: ${e2.message}`);
+    throw new Error(`HEIC 파일을 변환할 수 없습니다 (${file.name}). JPG로 변환 후 다시 시도해주세요.`);
+  }
 }
 
 async function loadAlbumImageFromFile(file) {
