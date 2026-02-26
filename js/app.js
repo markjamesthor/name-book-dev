@@ -1190,6 +1190,65 @@ function cleanupPhotos() {
     console.log(`🧹 ${allPhotos.length}개 사진 URL 정리됨. 현재 추적 중: ${urlTracker.count}개`);
 }
 
+/**
+ * SAM2로 아이만 세그멘테이션
+ * @param {File} file - 원본 이미지 파일
+ * @param {Array} mainSubjects - face-api.js가 감지한 메인 인물들 (크기순 정렬, 가장 큰 얼굴이 첫 번째)
+ * @returns {Object|null} { url, img, score, cropInfo } 또는 실패 시 null
+ */
+async function segmentChildWithSAM2(file, mainSubjects) {
+    if (!mainSubjects || mainSubjects.length < 2) return null;
+
+    try {
+        // 가장 작은 얼굴 = 아이 (mainSubjects는 크기 내림차순)
+        const childFace = mainSubjects[mainSubjects.length - 1];
+        const childCenterX = childFace.box.x + childFace.box.width / 2;
+        const childCenterY = childFace.box.y + childFace.box.height / 2;
+
+        // 나머지 얼굴 = 어른 (negative points)
+        const adultFaces = mainSubjects.slice(0, -1);
+        const negPoints = adultFaces.map(f => [
+            f.box.x + f.box.width / 2,
+            f.box.y + f.box.height / 2
+        ]);
+
+        console.log(`👶 SAM2 요청: 아이 (${childCenterX.toFixed(0)}, ${childCenterY.toFixed(0)}), 어른 ${negPoints.length}명`);
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('point_x', childCenterX.toString());
+        formData.append('point_y', childCenterY.toString());
+        if (negPoints.length > 0) {
+            formData.append('neg_points', JSON.stringify(negPoints));
+        }
+
+        const { response } = await fetchWithFailover('/segment-child', {
+            method: 'POST',
+            body: formData
+        }, 'windows');
+
+        const cropInfo = {
+            originalWidth: parseInt(response.headers.get('X-Original-Width')) || 0,
+            originalHeight: parseInt(response.headers.get('X-Original-Height')) || 0,
+            cropX: parseInt(response.headers.get('X-Crop-X')) || 0,
+            cropY: parseInt(response.headers.get('X-Crop-Y')) || 0,
+            cropWidth: parseInt(response.headers.get('X-Crop-Width')) || 0,
+            cropHeight: parseInt(response.headers.get('X-Crop-Height')) || 0,
+        };
+        const score = parseFloat(response.headers.get('X-SAM2-Score')) || 0;
+
+        const blob = await response.blob();
+        const url = urlTracker.create(blob);
+        const img = await loadImage(url);
+
+        console.log(`✅ SAM2 성공: score=${score.toFixed(3)}, size=${blob.size} bytes`);
+        return { url, img, score, cropInfo };
+    } catch (err) {
+        console.warn(`⚠️ SAM2 세그멘테이션 실패: ${err.message}`);
+        return null;
+    }
+}
+
 async function handleBatchUpload(files) {
     if (!state.modelLoaded) {
         alert("시스템 로딩 중입니다.");
@@ -1243,12 +1302,29 @@ async function handleBatchUpload(files) {
                     console.log(`👥 얼굴 0명 + 포즈 키포인트 ${confidentKeypoints}개: ${files[i].name}`);
                 }
             } else if (faceCount >= 2) {
-                category = 'multi';
-                photoData.multiReason = `${faceCount}명 감지됨`;
                 console.log(`👥 얼굴 ${faceCount}명 감지: ${files[i].name}`);
                 photoData.mainSubjects.forEach((s, idx) => {
                     console.log(`   - 얼굴${idx + 1}: 신뢰도=${(s.score * 100).toFixed(0)}%, 크기=${(s.areaRatio * 100).toFixed(1)}%`);
                 });
+
+                // SAM2로 아이만 세그멘테이션 시도
+                elements.loadingIndicator.textContent = `아이를 분리하는 중... (${i + 1}/${files.length})`;
+                const sam2Result = await segmentChildWithSAM2(file, photoData.mainSubjects);
+                if (sam2Result) {
+                    console.log(`✅ SAM2 아이 세그멘테이션 성공: ${files[i].name}`);
+                    photoData.sam2ProcessedUrl = sam2Result.url;
+                    photoData.sam2ProcessedImg = sam2Result.img;
+                    photoData.sam2Score = sam2Result.score;
+                    photoData.sam2CropInfo = sam2Result.cropInfo;
+                    photoData.cachedProcessedUrl = sam2Result.url;
+                    photoData.cachedProcessedImg = sam2Result.img;
+                    photoData.serverCropInfo = sam2Result.cropInfo;
+                    category = classifyPhoto(photoData);
+                    photoData.multiReason = `${faceCount}명 → SAM2로 아이 분리`;
+                } else {
+                    category = 'multi';
+                    photoData.multiReason = `${faceCount}명 감지됨`;
+                }
             } else {
                 category = classifyPhoto(photoData);
             }

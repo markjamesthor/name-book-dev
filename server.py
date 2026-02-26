@@ -60,7 +60,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from transformers import AutoModelForImageSegmentation
 from torchvision import transforms
 from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 from PIL import Image, ImageOps
 from pillow_heif import register_heif_opener
 register_heif_opener()
@@ -69,12 +69,14 @@ import gc
 import io
 import time
 import asyncio
+import threading
 import numpy as np
 import os
 import json
 import re
 import traceback
 import httpx
+import base64
 from pathlib import Path
 
 # Ryan Engine 임포트
@@ -96,6 +98,59 @@ except ImportError as e:
     BGQA_AVAILABLE = False
     print(f"⚠️ BGQA 로드 실패: {e}")
 
+# SAM2 임포트
+try:
+    from sam2.sam2_image_predictor import SAM2ImagePredictor
+    from sam2.automatic_mask_generator import SAM2AutomaticMaskGenerator
+    SAM2_AVAILABLE = True
+    print("✅ SAM2 모듈 로드 완료")
+except ImportError as e:
+    SAM2_AVAILABLE = False
+    print(f"⚠️ SAM2 모듈 없음: {e}")
+
+# Grounding DINO 임포트
+try:
+    from transformers import AutoProcessor as GDinoProcessor, AutoModelForZeroShotObjectDetection
+    GDINO_AVAILABLE = True
+    print("✅ Grounding DINO 모듈 로드 완료")
+except ImportError as e:
+    GDINO_AVAILABLE = False
+    print(f"⚠️ Grounding DINO 모듈 없음: {e}")
+
+# Florence-2 임포트
+try:
+    from transformers import AutoModelForCausalLM as Florence2Model, AutoProcessor as Florence2Processor
+    FLORENCE2_AVAILABLE = True
+    print("✅ Florence-2 모듈 로드 완료")
+except ImportError as e:
+    FLORENCE2_AVAILABLE = False
+    print(f"⚠️ Florence-2 모듈 없음: {e}")
+
+# flash_attn 미설치 대응 패치 (Windows 등)
+# 패치 전에 원본 함수 참조를 캡처 (mock.patch 후 재임포트 시 자기 자신 참조 방지)
+try:
+    from transformers.dynamic_module_utils import get_imports as _original_get_imports
+except ImportError:
+    _original_get_imports = None
+
+def _fixed_get_imports(filename):
+    """flash_attn 임포트를 제거하는 패치 — transformers.dynamic_module_utils.get_imports 대체"""
+    if _original_get_imports is None:
+        return []
+    imports = _original_get_imports(filename)
+    if "flash_attn" in imports:
+        imports.remove("flash_attn")
+    return imports
+
+# ViTMatte 임포트
+try:
+    from transformers import VitMatteForImageMatting, VitMatteImageProcessor
+    VITMATTE_AVAILABLE = True
+    print("✅ ViTMatte 모듈 로드 완료")
+except ImportError as e:
+    VITMATTE_AVAILABLE = False
+    print(f"⚠️ ViTMatte 모듈 없음: {e}")
+
 # PNG 저장 폴더 설정
 PNG_OUTPUT_DIR = Path("./png")
 PNG_OUTPUT_DIR.mkdir(exist_ok=True)
@@ -113,7 +168,27 @@ try:
 except Exception as e:
     print(f"⚠️ ViTPose 패치 스킵: {e}")
 
+from starlette.requests import Request as StarletteRequest
+from starlette.middleware.base import BaseHTTPMiddleware
+
 app = FastAPI()
+
+class RequestLogMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        client = request.client.host if request.client else "unknown"
+        path = request.url.path
+        qs = str(request.url.query)
+        cl = request.headers.get("content-length", "?")
+        print(f"🔵 [{client}] {request.method} {path}{'?' + qs if qs else ''} (body: {cl} bytes)")
+        try:
+            response = await call_next(request)
+            print(f"🟢 [{client}] {request.method} {path} → {response.status_code}")
+            return response
+        except Exception as e:
+            print(f"🔴 [{client}] {request.method} {path} → ERROR: {e}")
+            raise
+
+app.add_middleware(RequestLogMiddleware)
 
 # 허용된 Origin 목록 (프로덕션에서는 실제 도메인으로 변경)
 ALLOWED_ORIGINS = [
@@ -134,11 +209,11 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST"],  # GET 추가 (헬스체크 등)
     allow_headers=["Content-Type"],  # 필요한 헤더만 허용
-    expose_headers=["X-Original-Width", "X-Original-Height", "X-Crop-X", "X-Crop-Y", "X-Crop-Width", "X-Crop-Height", "X-BGQA-Score", "X-BGQA-Passed", "X-BGQA-Issues", "X-BGQA-CaseType"],  # 클라이언트에서 읽을 수 있는 커스텀 헤더
+    expose_headers=["X-Original-Width", "X-Original-Height", "X-Crop-X", "X-Crop-Y", "X-Crop-Width", "X-Crop-Height", "X-BGQA-Score", "X-BGQA-Passed", "X-BGQA-Issues", "X-BGQA-CaseType", "X-SAM2-Score", "X-Mask-Width", "X-Mask-Height"],  # 클라이언트에서 읽을 수 있는 커스텀 헤더
 )
 
 # 파일 검증 상수
-MAX_FILE_SIZE = 20 * 1024 * 1024  # 20MB
+MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif", "image/heic", "image/heif"}
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif"}
 
@@ -187,9 +262,152 @@ except ImportError:
     BEN2_AVAILABLE = False
     print("⚠️ BEN2 모듈 없음 (pip install ben2)")
 
+# SAM2 모델 (Lazy Loading)
+sam2_predictor = None
+sam2_lock = threading.Lock()  # set_image → predict 원자성 보장
+
+def get_sam2_predictor():
+    """SAM2 모델 로드 (Lazy Loading)"""
+    global sam2_predictor
+    if sam2_predictor is not None:
+        return sam2_predictor
+    if not SAM2_AVAILABLE:
+        raise ValueError("SAM2 모듈이 설치되지 않았습니다. pip install sam2")
+    print("📂 SAM2 모델 로딩 중 (sam2.1-hiera-large)...")
+    sam2_predictor = SAM2ImagePredictor.from_pretrained("facebook/sam2.1-hiera-large", device=device)
+    print(f"✅ SAM2 모델 로드 완료 (device: {device})")
+    return sam2_predictor
+
+# SAM2 AutomaticMaskGenerator (Lazy Loading — predictor.model 공유)
+sam2_mask_generator = None
+
+def get_sam2_mask_generator():
+    """SAM2 AutomaticMaskGenerator 로드 (기존 predictor의 model 공유)"""
+    global sam2_mask_generator
+    if sam2_mask_generator is not None:
+        return sam2_mask_generator
+    predictor = get_sam2_predictor()  # 모델 공유
+    print("📂 SAM2 AutomaticMaskGenerator 초기화 중...")
+    sam2_mask_generator = SAM2AutomaticMaskGenerator.from_pretrained(
+        "facebook/sam2.1-hiera-large",
+        points_per_side=32,
+        pred_iou_thresh=0.7,
+        stability_score_thresh=0.85,
+        min_mask_region_area=100,
+    )
+    print("✅ SAM2 AutomaticMaskGenerator 준비 완료")
+    return sam2_mask_generator
+
+# Grounding DINO 모델 (Lazy Loading)
+gdino_model = None
+gdino_processor = None
+
+def get_gdino_model():
+    """Grounding DINO 모델 로드 (Lazy Loading)"""
+    global gdino_model, gdino_processor
+    if gdino_model is not None:
+        return gdino_model, gdino_processor
+    if not GDINO_AVAILABLE:
+        raise ValueError("Grounding DINO가 설치되지 않았습니다.")
+    print("📂 Grounding DINO 모델 로딩 중 (grounding-dino-tiny)...")
+    gdino_processor = GDinoProcessor.from_pretrained("IDEA-Research/grounding-dino-tiny")
+    gdino_model = AutoModelForZeroShotObjectDetection.from_pretrained("IDEA-Research/grounding-dino-tiny")
+    gdino_model.to(device)
+    gdino_model.eval()
+    print(f"✅ Grounding DINO 모델 로드 완료 (device: {device})")
+    return gdino_model, gdino_processor
+
+# MM-DINO 모델 (Lazy Loading)
+mmdino_model = None
+mmdino_processor = None
+
+def get_mmdino_model():
+    """MM-DINO 모델 로드 (Lazy Loading) — 50.6 AP, Swin-Tiny 백본"""
+    global mmdino_model, mmdino_processor
+    if mmdino_model is not None:
+        return mmdino_model, mmdino_processor
+    if not GDINO_AVAILABLE:
+        raise ValueError("Grounding DINO가 설치되지 않았습니다.")
+    print("📂 MM-DINO 모델 로딩 중 (mm_grounding_dino_tiny)...")
+    mmdino_processor = GDinoProcessor.from_pretrained("openmmlab-community/mm_grounding_dino_tiny_o365v1_goldg_v3det")
+    mmdino_model = AutoModelForZeroShotObjectDetection.from_pretrained("openmmlab-community/mm_grounding_dino_tiny_o365v1_goldg_v3det")
+    mmdino_model.to(device)
+    mmdino_model.eval()
+    print(f"✅ MM-DINO 모델 로드 완료 (device: {device})")
+    return mmdino_model, mmdino_processor
+
+# Grounding DINO Base 모델 (Lazy Loading)
+gdino_base_model = None
+gdino_base_processor = None
+
+def get_gdino_base_model():
+    """Grounding DINO Base 모델 로드 (Lazy Loading) — 52.5 AP, Swin-Base 백본"""
+    global gdino_base_model, gdino_base_processor
+    if gdino_base_model is not None:
+        return gdino_base_model, gdino_base_processor
+    if not GDINO_AVAILABLE:
+        raise ValueError("Grounding DINO가 설치되지 않았습니다.")
+    print("📂 Grounding DINO Base 모델 로딩 중 (grounding-dino-base)...")
+    gdino_base_processor = GDinoProcessor.from_pretrained("IDEA-Research/grounding-dino-base")
+    gdino_base_model = AutoModelForZeroShotObjectDetection.from_pretrained("IDEA-Research/grounding-dino-base")
+    gdino_base_model.to(device)
+    gdino_base_model.eval()
+    print(f"✅ Grounding DINO Base 모델 로드 완료 (device: {device})")
+    return gdino_base_model, gdino_base_processor
+
+# Florence-2 모델 (Lazy Loading)
+florence2_model = None
+florence2_processor = None
+
+def get_florence2_model():
+    """Florence-2-large-ft 모델 로드 (Lazy Loading) — FP16, SDPA attention"""
+    global florence2_model, florence2_processor
+    if florence2_model is not None:
+        return florence2_model, florence2_processor
+    if not FLORENCE2_AVAILABLE:
+        raise ValueError("Florence-2가 설치되지 않았습니다.")
+    print("📂 Florence-2-large-ft 모델 로딩 중...")
+    import unittest.mock
+    # flash_attn 미설치 환경 대응: get_imports 패치
+    with unittest.mock.patch("transformers.dynamic_module_utils.get_imports", _fixed_get_imports):
+        florence2_model = Florence2Model.from_pretrained(
+            "microsoft/Florence-2-large-ft",
+            torch_dtype=torch.float16,
+            attn_implementation="sdpa",
+            trust_remote_code=True,
+        )
+    florence2_model.to(device)
+    florence2_model.eval()
+    florence2_processor = Florence2Processor.from_pretrained(
+        "microsoft/Florence-2-large-ft",
+        trust_remote_code=True,
+    )
+    print(f"✅ Florence-2-large-ft 모델 로드 완료 (device: {device})")
+    return florence2_model, florence2_processor
+
+# ViTMatte 모델 (Lazy Loading)
+vitmatte_model = None
+vitmatte_processor = None
+
+def get_vitmatte_model():
+    """ViTMatte 모델 로드 (Lazy Loading)"""
+    global vitmatte_model, vitmatte_processor
+    if vitmatte_model is not None:
+        return vitmatte_model, vitmatte_processor
+    if not VITMATTE_AVAILABLE:
+        raise ValueError("ViTMatte가 설치되지 않았습니다.")
+    print("📂 ViTMatte 모델 로딩 중 (vitmatte-small)...")
+    vitmatte_processor = VitMatteImageProcessor.from_pretrained("hustvl/vitmatte-small-composition-1k")
+    vitmatte_model = VitMatteForImageMatting.from_pretrained("hustvl/vitmatte-small-composition-1k")
+    vitmatte_model.to(device)
+    vitmatte_model.half()
+    vitmatte_model.eval()
+    print(f"✅ ViTMatte 모델 로드 완료 (device: {device})")
+    return vitmatte_model, vitmatte_processor
+
 # remove.bg API 설정
 REMOVEBG_API_KEY = os.environ.get("REMOVEBG_API_KEY", "D8B2GQyMvmfbXXfH2mZukPi4")
-REMOVEBG_ENABLED = os.environ.get("REMOVEBG_ENABLED", "false").lower() == "true"
+REMOVEBG_ENABLED = os.environ.get("REMOVEBG_ENABLED", "true").lower() == "true"
 
 # 2. 모델 설정 (Lazy Loading)
 # 지원되는 BiRefNet 모델들 (모두 로컬)
@@ -199,6 +417,10 @@ BIREFNET_MODELS = {
     "hr-matting": "./models/birefnet-hr-matting",
     "dynamic": "./models/birefnet-dynamic",
     "rmbg2": "./models/rmbg2",
+    # Alpha matting 모델 (soft alpha, 머리카락 한 올까지 처리)
+    "matting": "./models/birefnet-matting",
+    "hr-matting-alpha": "./models/birefnet-hr-matting-alpha",
+    "dynamic-matting": "./models/birefnet-dynamic-matting",
 }
 
 # torch.compile 가용성 체크 (Triton 필요)
@@ -229,16 +451,18 @@ def get_ben2_model():
     print("✅ BEN2 모델 로드 완료")
     return ben2_model
 
-async def call_removebg_api(image_data: bytes) -> Image.Image:
+async def call_removebg_api(image_data: bytes, size: str = "preview") -> Image.Image:
     """remove.bg API 호출하여 배경 제거된 RGBA 이미지 반환"""
     if not REMOVEBG_API_KEY:
         raise ValueError("REMOVEBG_API_KEY가 설정되지 않았습니다.")
+    if size not in ("preview", "full"):
+        size = "preview"
     async with httpx.AsyncClient(timeout=60.0) as client:
         resp = await client.post(
             "https://api.remove.bg/v1.0/removebg",
             headers={"X-Api-Key": REMOVEBG_API_KEY},
             files={"image_file": ("image.jpg", image_data, "image/jpeg")},
-            data={"size": "preview", "format": "png", "channels": "rgba"},
+            data={"size": size, "format": "png", "channels": "rgba"},
         )
     if resp.status_code != 200:
         error_detail = resp.json().get("errors", [{}])[0].get("title", resp.text) if resp.headers.get("content-type", "").startswith("application/json") else resp.text[:200]
@@ -485,7 +709,8 @@ def refine_foreground_color(image: Image.Image, mask: Image.Image, r: int = 90) 
 async def remove_background(
     file: UploadFile = File(...),
     max_size: int = Query(default=1440, ge=512, le=9999, description="처리 해상도 (512-2500, 9999=원본)"),
-    model: str = Query(default="portrait", pattern="^(portrait|hr|hr-matting|dynamic|rmbg2|ben2|removebg)$", description="배경 제거 모델"),
+    model: str = Query(default="portrait", pattern="^(portrait|hr|hr-matting|dynamic|rmbg2|ben2|removebg|matting|hr-matting-alpha|dynamic-matting)$", description="배경 제거 모델"),
+    removebg_size: str = Query(default="preview", pattern="^(preview|full)$", description="remove.bg 크기: preview(저해상도) 또는 full(원본)"),
     case_type: str = Query(default="auto", description="피사체 유형: auto, KID_PERSON, ADULT_PERSON, TOY_OBJECT"),
     has_face: bool = Query(default=True, description="얼굴 감지 여부 (Face API 결과)"),
     refine: str = Query(default="none", pattern="^(none|guided|pymatting|fg_estimate)$", description="마스크 리파인 방법")
@@ -535,7 +760,7 @@ async def remove_background(
             buf = io.BytesIO()
             image.save(buf, format="JPEG", quality=95)
             jpeg_data = buf.getvalue()
-            result_rgba = await call_removebg_api(jpeg_data)
+            result_rgba = await call_removebg_api(jpeg_data, size=removebg_size)
             # 원본과 크기가 다를 수 있으므로 원본 크기로 리사이즈
             if result_rgba.size != (original_w, original_h):
                 result_rgba = result_rgba.resize((original_w, original_h), Image.Resampling.LANCZOS)
@@ -640,49 +865,43 @@ async def remove_background(
         )
 
 # ========== ViTPose 모델 (Lazy Loading) ==========
-vitpose_model = None
-vitpose_huge_model = None
-vitpose_processor = None
+# 각 모델은 자체 processor가 필요 (plus 모델은 config이 다름)
+_vitpose_cache = {}  # model_type -> (model, processor)
+
+VITPOSE_MODELS = {
+    "vitpose": "usyd-community/vitpose-plus-base",       # 86M, 77.0 AP
+    "vitpose-huge": "usyd-community/vitpose-plus-huge",   # 657M, 81.1 AP
+}
 
 def load_vitpose_model(model_type="vitpose"):
     """ViTPose 모델 로드 (처음 요청 시에만)"""
-    global vitpose_model, vitpose_huge_model, vitpose_processor
+    global _vitpose_cache
+
+    if model_type in _vitpose_cache:
+        return _vitpose_cache[model_type]
 
     try:
-        from transformers import AutoProcessor, AutoModel, VitPoseForPoseEstimation
+        from transformers import AutoProcessor, VitPoseForPoseEstimation
 
-        model_name = "usyd-community/vitpose-base-simple" if model_type == "vitpose" else "usyd-community/vitpose-huge-simple"
+        model_name = VITPOSE_MODELS.get(model_type)
+        if not model_name:
+            raise ValueError(f"알 수 없는 ViTPose 모델: {model_type}")
 
-        if model_type == "vitpose" and vitpose_model is None:
-            print(f"📂 ViTPose 모델 로딩 중... ({model_name})")
-            vitpose_processor = AutoProcessor.from_pretrained(model_name)
-            vitpose_model = VitPoseForPoseEstimation.from_pretrained(model_name)
-            vitpose_model.to(device)
-            vitpose_model.eval()
-            print("✅ ViTPose 모델 로드 완료")
-            return vitpose_model, vitpose_processor
+        print(f"📂 ViTPose 모델 로딩 중... ({model_name})")
+        processor = AutoProcessor.from_pretrained(model_name)
+        model = VitPoseForPoseEstimation.from_pretrained(model_name)
+        model.to(device)
+        model.eval()
+        print(f"✅ ViTPose 모델 로드 완료 ({model_type})")
 
-        elif model_type == "vitpose-huge" and vitpose_huge_model is None:
-            print(f"📂 ViTPose-Huge 모델 로딩 중... ({model_name})")
-            if vitpose_processor is None:
-                vitpose_processor = AutoProcessor.from_pretrained(model_name)
-            vitpose_huge_model = VitPoseForPoseEstimation.from_pretrained(model_name)
-            vitpose_huge_model.to(device)
-            vitpose_huge_model.eval()
-            print("✅ ViTPose-Huge 모델 로드 완료")
-            return vitpose_huge_model, vitpose_processor
-
-        # 이미 로드된 모델 반환
-        if model_type == "vitpose":
-            return vitpose_model, vitpose_processor
-        else:
-            return vitpose_huge_model, vitpose_processor
+        _vitpose_cache[model_type] = (model, processor)
+        return model, processor
 
     except ImportError as e:
         print(f"❌ Import 오류: {str(e)}")
         raise HTTPException(
             status_code=500,
-            detail=f"ViTPose 모델을 사용하려면 transformers>=4.45.0이 필요합니다. 오류: {str(e)}"
+            detail=f"ViTPose 모델을 사용하려면 transformers>=4.49.0이 필요합니다. 오류: {str(e)}"
         )
     except Exception as e:
         print(f"❌ 모델 로드 오류: {str(e)}")
@@ -740,6 +959,8 @@ def extract_wrist_keypoints(image: Image.Image, min_score: float = 0.3) -> list:
         boxes = [[[0, 0, image.width, image.height]]]
         inputs = processor(images=image, boxes=boxes, return_tensors="pt")
         inputs = {k: v.to(device) for k, v in inputs.items()}
+        if 'dataset_index' not in inputs:
+            inputs['dataset_index'] = torch.zeros(inputs['pixel_values'].shape[0], dtype=torch.long, device=device)
 
         # 추론
         with torch.no_grad():
@@ -772,9 +993,10 @@ def extract_wrist_keypoints(image: Image.Image, min_score: float = 0.3) -> list:
 @app.post("/detect-pose")
 async def detect_pose(
     file: UploadFile = File(...),
-    model: str = Query(default="vitpose", pattern="^(vitpose|vitpose-huge)$", description="모델 선택")
+    model: str = Query(default="vitpose", pattern="^(vitpose|vitpose-huge)$", description="모델 선택"),
+    boxes: str = Query(default="", description="DINO bboxes JSON: [[x1,y1,x2,y2], ...] (xyxy format)")
 ):
-    """ViTPose를 사용한 포즈 감지"""
+    """ViTPose를 사용한 포즈 감지 (멀티 person 지원)"""
     print("-" * 40)
     print(f"🦴 포즈 감지 요청: {file.filename} (모델: {model})")
     start_time = time.time()
@@ -794,74 +1016,120 @@ async def detect_pose(
     except Exception:
         raise HTTPException(status_code=400, detail="올바른 이미지 형식이 아닙니다.")
 
+    # boxes 파라미터 파싱
+    use_multi_person = False
+    person_boxes = []
+    if boxes:
+        try:
+            parsed_boxes = json.loads(boxes)
+            if isinstance(parsed_boxes, list) and len(parsed_boxes) > 0:
+                for b in parsed_boxes:
+                    if len(b) == 4:
+                        person_boxes.append([float(b[0]), float(b[1]), float(b[2]), float(b[3])])
+                if person_boxes:
+                    use_multi_person = True
+                    print(f"   📦 {len(person_boxes)}개 person bbox 수신")
+        except (json.JSONDecodeError, TypeError) as e:
+            print(f"   ⚠️ boxes 파싱 실패: {e}, 전체 이미지 모드로 fallback")
+
     try:
         # 모델 로드 (Lazy)
         pose_model, processor = load_vitpose_model(model)
 
-        # 이미지 전처리 - ViTPose는 bounding box 필요
-        # 전체 이미지를 하나의 person bbox로 처리
-        boxes = [[[0, 0, image.width, image.height]]]  # batch, num_persons, 4
-        inputs = processor(images=image, boxes=boxes, return_tensors="pt")
-        inputs = {k: v.to(device) for k, v in inputs.items()}
+        if use_multi_person:
+            # ===== 멀티 person 모드 (DINO boxes → per-person keypoints) =====
+            # boxes: [batch, num_persons, 4] format for processor
+            boxes_for_processor = [person_boxes]  # batch of 1
+            inputs = processor(images=image, boxes=boxes_for_processor, return_tensors="pt")
+            inputs = {k: v.to(device) for k, v in inputs.items()}
+            # vitpose-plus 모델은 dataset_index 필요 (COCO = 0)
+            if 'dataset_index' not in inputs:
+                inputs['dataset_index'] = torch.zeros(inputs['pixel_values'].shape[0], dtype=torch.long, device=device)
 
-        # 추론
-        with torch.no_grad():
-            outputs = pose_model(**inputs)
+            with torch.no_grad():
+                outputs = pose_model(**inputs)
 
-        # 결과 처리
-        # ViTPose 출력: pose_logits [batch, num_persons, num_keypoints, height, width]
-        # post_process_pose_estimation으로 키포인트 추출
-        results = processor.post_process_pose_estimation(outputs, boxes=boxes)[0][0]
+            # post_process returns list[list[dict]] — [batch][person]
+            all_results = processor.post_process_pose_estimation(outputs, boxes=boxes_for_processor)[0]
 
-        # keypoints: [17, 2], scores: [17]
-        keypoints_xy = results['keypoints'].cpu().numpy()
-        scores = results['scores'].cpu().numpy()
-
-        print(f"🦴 감지된 키포인트: {len(keypoints_xy)}개")
-
-        # BlazePose 형식으로 변환 (33개 키포인트, 없는 건 0으로)
-        blazepose_keypoints = []
-        for i in range(33):
-            # COCO에서 매핑된 키포인트 찾기
-            coco_idx = None
-            for coco_i, blaze_i in COCO_TO_BLAZEPOSE.items():
-                if blaze_i == i:
-                    coco_idx = coco_i
-                    break
-
-            if coco_idx is not None and coco_idx < len(keypoints_xy):
-                kp = keypoints_xy[coco_idx]
-                score = float(scores[coco_idx])
-                blazepose_keypoints.append({
-                    "x": float(kp[0]),
-                    "y": float(kp[1]),
-                    "score": score,
-                    "name": f"keypoint_{i}"
+            persons = []
+            for idx, res in enumerate(all_results):
+                kps = res['keypoints'].cpu().numpy()
+                scs = res['scores'].cpu().numpy()
+                persons.append({
+                    "keypoints": [[float(kps[i][0]), float(kps[i][1])] for i in range(len(kps))],
+                    "scores": [float(scs[i]) for i in range(len(scs))],
+                    "bbox": person_boxes[idx],
                 })
-            else:
-                # 매핑되지 않은 키포인트는 0으로
-                blazepose_keypoints.append({
-                    "x": 0,
-                    "y": 0,
-                    "score": 0,
-                    "name": f"keypoint_{i}"
-                })
+                valid_count = int((scs > 0.3).sum())
+                print(f"   Person {idx}: {valid_count}/17 valid keypoints (bbox: [{person_boxes[idx][0]:.0f},{person_boxes[idx][1]:.0f},{person_boxes[idx][2]:.0f},{person_boxes[idx][3]:.0f}])")
 
-        # 발목 키포인트 확인 로그
-        ankle_left = blazepose_keypoints[27]
-        ankle_right = blazepose_keypoints[28]
-        print(f"🦶 발목 키포인트 - 왼쪽(27): score={ankle_left['score']:.3f}, 오른쪽(28): score={ankle_right['score']:.3f}")
-        print(f"⚡ 완료! 소요시간: {time.time() - start_time:.2f}초")
-        print("-" * 40)
+            print(f"⚡ 완료! {len(persons)}명 포즈 감지, 소요시간: {time.time() - start_time:.2f}초")
+            print("-" * 40)
 
-        clear_gpu_memory()
-        return JSONResponse(content={
-            "success": True,
-            "model": model,
-            "keypoints": blazepose_keypoints,
-            "image_width": image.width,
-            "image_height": image.height
-        })
+            clear_gpu_memory()
+            return JSONResponse(content={
+                "success": True,
+                "model": model,
+                "persons": persons,
+                "image_width": image.width,
+                "image_height": image.height,
+            })
+
+        else:
+            # ===== 단일 person 모드 (기존 호환) =====
+            boxes_single = [[[0, 0, image.width, image.height]]]
+            inputs = processor(images=image, boxes=boxes_single, return_tensors="pt")
+            inputs = {k: v.to(device) for k, v in inputs.items()}
+            if 'dataset_index' not in inputs:
+                inputs['dataset_index'] = torch.zeros(inputs['pixel_values'].shape[0], dtype=torch.long, device=device)
+
+            with torch.no_grad():
+                outputs = pose_model(**inputs)
+
+            results = processor.post_process_pose_estimation(outputs, boxes=boxes_single)[0][0]
+            keypoints_xy = results['keypoints'].cpu().numpy()
+            scores = results['scores'].cpu().numpy()
+
+            print(f"🦴 감지된 키포인트: {len(keypoints_xy)}개")
+
+            # BlazePose 형식으로 변환 (33개 키포인트, 없는 건 0으로)
+            blazepose_keypoints = []
+            for i in range(33):
+                coco_idx = None
+                for coco_i, blaze_i in COCO_TO_BLAZEPOSE.items():
+                    if blaze_i == i:
+                        coco_idx = coco_i
+                        break
+
+                if coco_idx is not None and coco_idx < len(keypoints_xy):
+                    kp = keypoints_xy[coco_idx]
+                    score = float(scores[coco_idx])
+                    blazepose_keypoints.append({
+                        "x": float(kp[0]),
+                        "y": float(kp[1]),
+                        "score": score,
+                        "name": f"keypoint_{i}"
+                    })
+                else:
+                    blazepose_keypoints.append({
+                        "x": 0, "y": 0, "score": 0, "name": f"keypoint_{i}"
+                    })
+
+            ankle_left = blazepose_keypoints[27]
+            ankle_right = blazepose_keypoints[28]
+            print(f"🦶 발목 키포인트 - 왼쪽(27): score={ankle_left['score']:.3f}, 오른쪽(28): score={ankle_right['score']:.3f}")
+            print(f"⚡ 완료! 소요시간: {time.time() - start_time:.2f}초")
+            print("-" * 40)
+
+            clear_gpu_memory()
+            return JSONResponse(content={
+                "success": True,
+                "model": model,
+                "keypoints": blazepose_keypoints,
+                "image_width": image.width,
+                "image_height": image.height
+            })
 
     except HTTPException:
         raise
@@ -1019,6 +1287,8 @@ async def smart_crop(
         boxes = [[[0, 0, image.width, image.height]]]
         inputs = processor(images=image, boxes=boxes, return_tensors="pt")
         inputs = {k: v.to(device) for k, v in inputs.items()}
+        if 'dataset_index' not in inputs:
+            inputs['dataset_index'] = torch.zeros(inputs['pixel_values'].shape[0], dtype=torch.long, device=device)
 
         with torch.no_grad():
             outputs = pose_model(**inputs)
@@ -1415,6 +1685,1050 @@ async def generate_book(request: BookRequest):
             detail=f"책 생성 중 오류가 발생했습니다: {str(e)}"
         )
 
+# ========== 인쇄 요청 API ==========
+
+class PrintRequest(BaseModel):
+    firstName: str
+    parentNames: str = ""
+    version: str = "A"
+    bookId: str = ""
+    timestamp: str = ""
+
+@app.post("/request-print")
+async def request_print(request: PrintRequest):
+    """인쇄 요청 접수 (북토리 연동은 추후)"""
+    print("-" * 40)
+    print(f"🖨️ 인쇄 요청 접수: {request.firstName} (버전: {request.version}, bookId: {request.bookId})")
+    print(f"   시각: {request.timestamp}")
+    print("-" * 40)
+
+    return JSONResponse(content={
+        "success": True,
+        "message": "인쇄 요청이 접수되었습니다.",
+        "bookId": request.bookId,
+    })
+
+# ========== SAM2 아이 세그멘테이션 API ==========
+
+@app.post("/segment-child")
+async def segment_child(
+    file: UploadFile = File(...),
+    point_x: float = Form(default=0, description="아이 얼굴 중심 X 좌표"),
+    point_y: float = Form(default=0, description="아이 얼굴 중심 Y 좌표"),
+    neg_points: str = Form(default="", description="어른 얼굴 중심 좌표 JSON: [[x1,y1],[x2,y2],...]"),
+    pos_points: str = Form(default="", description="ViTPose 아이 keypoints JSON: [[x1,y1],[x2,y2],...] (positive prompts)"),
+    box: str = Form(default="", description="Box prompt JSON: [x1,y1,x2,y2] (Grounding DINO bbox)"),
+    combine: bool = Form(default=False, description="True이면 box와 point를 동시에 사용 (가려진 신체 복원에 효과적)"),
+):
+    """
+    SAM2 기반 아이 세그멘테이션
+
+    face-api.js에서 감지한 아이 얼굴 중심 좌표를 point prompt로 사용하여
+    SAM2가 아이만 세그먼트합니다. 어른 얼굴 좌표는 negative prompt로 사용.
+    pos_points가 제공되면 ViTPose keypoints를 multi-point positive prompt로 사용.
+
+    Returns: 아이만 추출된 투명 배경 WebP 이미지
+    """
+    print("-" * 40)
+    print(f"👶 SAM2 아이 세그멘테이션 요청: {file.filename}")
+    print(f"   아이 좌표: ({point_x:.0f}, {point_y:.0f})")
+    start_time = time.time()
+
+    if not SAM2_AVAILABLE:
+        raise HTTPException(status_code=500, detail="SAM2 모듈이 설치되지 않았습니다.")
+
+    # 파일 검증
+    if not is_allowed_image(file):
+        raise HTTPException(status_code=400, detail="지원하지 않는 파일 형식입니다.")
+
+    image_data = await file.read()
+    if len(image_data) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=400, detail="파일이 너무 큽니다.")
+
+    try:
+        image = Image.open(io.BytesIO(image_data))
+        image = ImageOps.exif_transpose(image)
+        image = image.convert("RGB")
+    except Exception:
+        raise HTTPException(status_code=400, detail="올바른 이미지 형식이 아닙니다.")
+
+    try:
+        predictor = get_sam2_predictor()
+
+        # Box prompt + Point prompt 구성
+        box_coords = None
+        if box:
+            try:
+                box_list = json.loads(box)
+                if len(box_list) == 4:
+                    box_coords = np.array([box_list], dtype=np.float32)
+                    print(f"   📦 Box prompt: [{box_list[0]:.0f}, {box_list[1]:.0f}, {box_list[2]:.0f}, {box_list[3]:.0f}]")
+            except (json.JSONDecodeError, TypeError):
+                print(f"   ⚠️ box 파싱 실패")
+
+        # Point prompts 구성 (combine=True이면 box와 함께 사용)
+        points = []
+        labels = []
+
+        if combine or not box_coords:
+            # pos_points: ViTPose multi-point positive prompts
+            if pos_points:
+                try:
+                    pos_list = json.loads(pos_points)
+                    for pp in pos_list:
+                        if len(pp) == 2:
+                            points.append([float(pp[0]), float(pp[1])])
+                            labels.append(1)  # foreground
+                    print(f"   ViTPose positive points: {len(pos_list)}개")
+                except (json.JSONDecodeError, TypeError):
+                    print(f"   ⚠️ pos_points 파싱 실패, point_x/y fallback")
+
+            # pos_points가 없거나 파싱 실패 시 기존 point_x/point_y 사용
+            if not points:
+                points.append([point_x, point_y])
+                labels.append(1)  # foreground (아이)
+
+            # negative points 파싱 (어른 얼굴/keypoints 좌표)
+            if neg_points:
+                try:
+                    neg_list = json.loads(neg_points)
+                    for np_coord in neg_list:
+                        if len(np_coord) == 2:
+                            points.append([float(np_coord[0]), float(np_coord[1])])
+                            labels.append(0)  # background (어른)
+                    print(f"   Negative points: {len(neg_list)}개")
+                except (json.JSONDecodeError, TypeError):
+                    print(f"   ⚠️ neg_points 파싱 실패, 무시")
+
+            print(f"   총 points: {len(points)}개 (pos={sum(1 for l in labels if l==1)}, neg={sum(1 for l in labels if l==0)})")
+
+        point_coords_arr = np.array(points, dtype=np.float32) if points else None
+        point_labels_arr = np.array(labels, dtype=np.int32) if labels else None
+
+        if combine and box_coords is not None and point_coords_arr is not None:
+            print(f"   🔗 Combine 모드: box + {len(points)}개 point 동시 사용")
+
+        # SAM2 추론 (GPU 작업이므로 to_thread 사용)
+        def _run_sam2():
+            img_np = np.array(image)
+            with sam2_lock, torch.inference_mode():
+                predictor.set_image(img_np)
+                masks, scores, logits = predictor.predict(
+                    point_coords=point_coords_arr,
+                    point_labels=point_labels_arr,
+                    box=box_coords,
+                    multimask_output=True,
+                )
+            # 가장 높은 점수의 마스크 선택
+            best_idx = np.argmax(scores)
+            best_mask = masks[best_idx]
+            best_score = float(scores[best_idx])
+            parts = []
+            if box_coords is not None: parts.append("box")
+            if point_coords_arr is not None: parts.append(f"point×{len(points)}")
+            prompt_type = "+".join(parts) if parts else "none"
+            print(f"   SAM2 마스크 {len(masks)}개 생성 ({prompt_type}), 최고 점수: {best_score:.3f} (idx={best_idx})")
+            return best_mask, best_score
+
+        mask_np, mask_score = await asyncio.to_thread(_run_sam2)
+
+        # 마스크를 PIL Image로 변환
+        mask_uint8 = (mask_np * 255).astype(np.uint8)
+        mask_pil = Image.fromarray(mask_uint8)
+
+        # 원본 이미지에 마스크 적용
+        result = image.copy()
+        result.putalpha(mask_pil)
+
+        # 알파 채널 기준 크롭
+        alpha = result.split()[-1]
+        alpha_clean = alpha.point(lambda x: 0 if x < 30 else x)
+        bbox = alpha_clean.getbbox()
+
+        original_w, original_h = image.size
+        crop_x, crop_y = 0, 0
+
+        if bbox:
+            padding = 20
+            x1, y1, x2, y2 = bbox
+            crop_x = max(0, x1 - padding)
+            crop_y = max(0, y1 - padding)
+            x2 = min(result.width, x2 + padding)
+            y2 = min(result.height, y2 + padding)
+            result = result.crop((crop_x, crop_y, x2, y2))
+            print(f"   ✂️ 크롭: ({crop_x},{crop_y}) → {result.size}")
+
+        # WebP로 인코딩
+        img_byte_arr = io.BytesIO()
+        result.save(img_byte_arr, format='WEBP', quality=90)
+
+        elapsed = time.time() - start_time
+        print(f"⚡ SAM2 완료! 소요시간: {elapsed:.2f}초")
+        print("-" * 40)
+
+        headers = {
+            "X-Original-Width": str(original_w),
+            "X-Original-Height": str(original_h),
+            "X-Crop-X": str(crop_x),
+            "X-Crop-Y": str(crop_y),
+            "X-Crop-Width": str(result.width),
+            "X-Crop-Height": str(result.height),
+            "X-SAM2-Score": f"{mask_score:.3f}",
+        }
+
+        clear_gpu_memory()
+        return Response(content=img_byte_arr.getvalue(), media_type="image/webp", headers=headers)
+
+    except Exception as e:
+        clear_gpu_memory()
+        print(f"❌ SAM2 오류: {str(e)}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"SAM2 세그멘테이션 오류: {str(e)}")
+
+# ========== SAM2 전체 오브젝트 세그멘테이션 API ==========
+
+@app.post("/segment-all")
+async def segment_all(
+    file: UploadFile = File(...),
+    max_masks: int = Query(default=30, ge=1, le=100, description="최대 마스크 수"),
+    min_area_pct: float = Query(default=0.5, ge=0.0, le=50.0, description="최소 면적 비율 (%)"),
+):
+    """
+    SAM2 AutomaticMaskGenerator로 이미지 내 모든 오브젝트 자동 세그멘테이션.
+    label map (grayscale PNG, pixel=segment index, 0=background)과 메타데이터를 반환.
+    """
+    print("-" * 40)
+    print(f"🎯 SAM2 전체 세그멘테이션 요청: {file.filename} (max_masks={max_masks}, min_area_pct={min_area_pct}%)")
+    start_time = time.time()
+
+    if not SAM2_AVAILABLE:
+        raise HTTPException(status_code=500, detail="SAM2 모듈이 설치되지 않았습니다.")
+
+    if not is_allowed_image(file):
+        raise HTTPException(status_code=400, detail="지원하지 않는 파일 형식입니다.")
+
+    image_data = await file.read()
+    if len(image_data) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=400, detail="파일이 너무 큽니다.")
+
+    try:
+        image = Image.open(io.BytesIO(image_data))
+        image = ImageOps.exif_transpose(image)
+        image = image.convert("RGB")
+    except Exception:
+        raise HTTPException(status_code=400, detail="올바른 이미지 형식이 아닙니다.")
+
+    try:
+        orig_w, orig_h = image.size
+
+        # 성능 최적화: max 1024px로 리사이즈 후 처리
+        MAX_SIDE = 1024
+        scale = 1.0
+        if max(orig_w, orig_h) > MAX_SIDE:
+            scale = MAX_SIDE / max(orig_w, orig_h)
+            new_w = int(orig_w * scale)
+            new_h = int(orig_h * scale)
+            image_small = image.resize((new_w, new_h), Image.Resampling.LANCZOS)
+            print(f"   📐 리사이즈: {orig_w}x{orig_h} → {new_w}x{new_h}")
+        else:
+            image_small = image
+            new_w, new_h = orig_w, orig_h
+
+        generator = get_sam2_mask_generator()
+
+        def _run_auto_mask():
+            img_np = np.array(image_small)
+            with sam2_lock, torch.inference_mode():
+                masks = generator.generate(img_np)
+            return masks
+
+        raw_masks = await asyncio.to_thread(_run_auto_mask)
+        print(f"   SAM2 자동 마스크 {len(raw_masks)}개 생성")
+
+        # 면적 필터링 & 정렬 (면적 큰 순)
+        total_area = new_w * new_h
+        min_area = total_area * (min_area_pct / 100.0)
+        filtered = [m for m in raw_masks if m['area'] >= min_area]
+        filtered.sort(key=lambda m: m['area'], reverse=True)
+        filtered = filtered[:max_masks]
+        print(f"   필터링 후 {len(filtered)}개 (min_area={min_area:.0f}px)")
+
+        # label map 구성 (작은 해상도 기준)
+        label_map_small = np.zeros((new_h, new_w), dtype=np.uint8)
+        segments = []
+        for i, m in enumerate(filtered):
+            idx = i + 1  # 1-based (0=background)
+            mask = m['segmentation']  # bool array (new_h, new_w)
+            label_map_small[mask] = idx
+
+            # bbox를 원본 해상도로 변환
+            bx, by, bw, bh = m['bbox']  # XYWH format
+            if scale != 1.0:
+                bx = int(bx / scale)
+                by = int(by / scale)
+                bw = int(bw / scale)
+                bh = int(bh / scale)
+            orig_area = int(m['area'] / (scale * scale))
+
+            segments.append({
+                "index": idx,
+                "bbox": [bx, by, bx + bw, by + bh],
+                "area": orig_area,
+                "area_pct": round(orig_area / (orig_w * orig_h) * 100, 2),
+                "score": round(float(m.get('predicted_iou', m.get('stability_score', 0))), 3),
+            })
+
+        # label map을 원본 크기로 복원 (NEAREST 보간으로 경계 유지)
+        label_map_pil = Image.fromarray(label_map_small, mode='L')
+        if scale != 1.0:
+            label_map_pil = label_map_pil.resize((orig_w, orig_h), Image.Resampling.NEAREST)
+
+        # PNG로 인코딩 → base64
+        buf = io.BytesIO()
+        label_map_pil.save(buf, format='PNG')
+        label_map_b64 = base64.b64encode(buf.getvalue()).decode('ascii')
+
+        elapsed = time.time() - start_time
+        print(f"⚡ SAM2 전체 세그멘테이션 완료! {len(segments)}개 세그먼트, {elapsed:.2f}초")
+        print("-" * 40)
+
+        clear_gpu_memory()
+        return JSONResponse(content={
+            "segments": segments,
+            "label_map": label_map_b64,
+            "image_width": orig_w,
+            "image_height": orig_h,
+        })
+
+    except Exception as e:
+        clear_gpu_memory()
+        print(f"❌ SAM2 전체 세그멘테이션 오류: {str(e)}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"SAM2 전체 세그멘테이션 오류: {str(e)}")
+
+# ========== 아이 감지 API (DINO / MM-DINO / DINO-Base / Florence-2) ==========
+# ⚠️ VRAM 참고: 4개 모델 전부 로드 시 ~2.7GB. RTX 4070S(12GB)에서 다른 모델과 합산 시 주의.
+
+def _build_detections(boxes_list, scores_list, labels_list):
+    """감지 결과를 통일된 형식으로 변환"""
+    detections = []
+    for i, (box, score) in enumerate(zip(boxes_list, scores_list)):
+        x1, y1, x2, y2 = box
+        w = x2 - x1
+        h = y2 - y1
+        detections.append({
+            "box": [float(x1), float(y1), float(x2), float(y2)],
+            "score": float(score),
+            "label": labels_list[i] if i < len(labels_list) else "unknown",
+            "width": float(w),
+            "height": float(h),
+            "area": float(w * h),
+            "cx": float(x1 + w / 2),
+            "cy": float(y1 + h / 2),
+        })
+    detections.sort(key=lambda d: d["area"], reverse=True)
+    return detections
+
+@app.post("/detect-child")
+async def detect_child(
+    file: UploadFile = File(...),
+    prompt: str = Query(default="child . person", description="감지할 텍스트 프롬프트 (마침표로 구분)"),
+    threshold: float = Query(default=0.25, ge=0.05, le=0.9, description="감지 임계값"),
+    model: Literal["gdino", "mmdino", "gdino-base", "florence2"] = Query(default="gdino", description="감지 모델"),
+    task: Literal["od", "grounding"] = Query(default="od", description="Florence-2 태스크"),
+):
+    """
+    이미지에서 아이/인물 감지 (다중 모델 지원)
+    - gdino: Grounding DINO Tiny (기본, 48.4 AP)
+    - mmdino: MM-DINO Tiny (50.6 AP)
+    - gdino-base: Grounding DINO Base (52.5 AP)
+    - florence2: Florence-2-large-ft (멀티태스크)
+    """
+    MODEL_LABELS = {"gdino": "DINO-Tiny", "mmdino": "MM-DINO", "gdino-base": "DINO-Base", "florence2": "Florence-2"}
+    model_label = MODEL_LABELS.get(model, model)
+
+    print("-" * 40)
+    if model == "florence2":
+        print(f"🔍 {model_label} 감지 요청: {file.filename} (model: {model}, task: {task}, prompt: '{prompt}')")
+    else:
+        print(f"🔍 {model_label} 감지 요청: {file.filename} (model: {model}, prompt: '{prompt}', threshold: {threshold})")
+    start_time = time.time()
+
+    if model in ("gdino", "mmdino", "gdino-base") and not GDINO_AVAILABLE:
+        raise HTTPException(status_code=500, detail="Grounding DINO가 설치되지 않았습니다.")
+    if model == "florence2" and not FLORENCE2_AVAILABLE:
+        raise HTTPException(status_code=500, detail="Florence-2가 설치되지 않았습니다.")
+
+    if not is_allowed_image(file):
+        raise HTTPException(status_code=400, detail="지원하지 않는 파일 형식입니다.")
+
+    image_data = await file.read()
+    if len(image_data) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=400, detail="파일이 너무 큽니다.")
+
+    try:
+        image = Image.open(io.BytesIO(image_data))
+        image = ImageOps.exif_transpose(image)
+        image = image.convert("RGB")
+    except Exception:
+        raise HTTPException(status_code=400, detail="올바른 이미지 형식이 아닙니다.")
+
+    try:
+        # ---- DINO-like 모델 (gdino, mmdino, gdino-base) ----
+        if model in ("gdino", "mmdino", "gdino-base"):
+            if model == "mmdino":
+                m, proc = get_mmdino_model()
+            elif model == "gdino-base":
+                m, proc = get_gdino_base_model()
+            else:
+                m, proc = get_gdino_model()
+
+            def _run_dino_like():
+                gdino_prompt = prompt.strip()
+                if not gdino_prompt.endswith('.'):
+                    gdino_prompt += '.'
+                inputs = proc(images=image, text=gdino_prompt, return_tensors="pt").to(device)
+                with torch.no_grad():
+                    outputs = m(**inputs)
+                results = proc.post_process_grounded_object_detection(
+                    outputs,
+                    inputs.input_ids,
+                    threshold=threshold,
+                    text_threshold=threshold,
+                    target_sizes=[image.size[::-1]],
+                )[0]
+                return results
+
+            results = await asyncio.to_thread(_run_dino_like)
+            boxes = results["boxes"].cpu().numpy().tolist()
+            scores = results["scores"].cpu().numpy().tolist()
+            labels = results["labels"]
+            detections = _build_detections(boxes, scores, labels)
+
+        # ---- Florence-2 ----
+        elif model == "florence2":
+            f2_model, f2_proc = get_florence2_model()
+
+            def _run_florence2():
+                if task == "grounding":
+                    task_prompt = "<CAPTION_TO_PHRASE_GROUNDING>"
+                    text_input = prompt.strip()
+                else:
+                    task_prompt = "<OD>"
+                    text_input = task_prompt
+
+                inputs = f2_proc(text=text_input, images=image, return_tensors="pt")
+                inputs = {k: v.to(device) if hasattr(v, 'to') else v for k, v in inputs.items()}
+                # FP16 변환
+                if inputs.get("pixel_values") is not None:
+                    inputs["pixel_values"] = inputs["pixel_values"].to(torch.float16)
+
+                with torch.no_grad():
+                    generated_ids = f2_model.generate(
+                        input_ids=inputs["input_ids"],
+                        pixel_values=inputs["pixel_values"],
+                        max_new_tokens=1024,
+                        num_beams=3,
+                    )
+                generated_text = f2_proc.batch_decode(generated_ids, skip_special_tokens=False)[0]
+                parsed = f2_proc.post_process_generation(
+                    generated_text,
+                    task=task_prompt,
+                    image_size=(image.width, image.height),
+                )
+                return parsed, task_prompt
+
+            parsed, task_prompt = await asyncio.to_thread(_run_florence2)
+
+            f2_boxes = []
+            f2_labels = []
+
+            if task == "grounding" and "<CAPTION_TO_PHRASE_GROUNDING>" in parsed:
+                result = parsed["<CAPTION_TO_PHRASE_GROUNDING>"]
+                raw_boxes = result.get("bboxes", [])
+                raw_labels = result.get("labels", [])
+                for bbox, lbl in zip(raw_boxes, raw_labels):
+                    f2_boxes.append(bbox)
+                    f2_labels.append(lbl)
+            elif "<OD>" in parsed:
+                result = parsed["<OD>"]
+                raw_boxes = result.get("bboxes", [])
+                raw_labels = result.get("labels", [])
+                _PERSON_KEYWORDS = {"person", "child", "human", "man", "woman", "boy", "girl", "baby", "kid", "toddler", "infant"}
+                for bbox, lbl in zip(raw_boxes, raw_labels):
+                    # OD 모드: 인물 관련 라벨만 필터 (단어 단위 매칭)
+                    lbl_words = set(lbl.lower().split())
+                    if lbl_words & _PERSON_KEYWORDS:
+                        f2_boxes.append(bbox)
+                        f2_labels.append(lbl)
+
+            # Florence-2는 confidence score 없음 → 1.0 고정
+            f2_scores = [1.0] * len(f2_boxes)
+            detections = _build_detections(f2_boxes, f2_scores, f2_labels)
+
+        else:
+            raise HTTPException(status_code=400, detail=f"지원하지 않는 모델: {model}. gdino|mmdino|gdino-base|florence2 중 선택")
+
+        elapsed = time.time() - start_time
+        print(f"   감지 결과: {len(detections)}개 ({model_label})")
+        for d in detections:
+            print(f"   - [{d['label']}] {d['score']:.2f} box=({d['box'][0]:.0f},{d['box'][1]:.0f},{d['box'][2]:.0f},{d['box'][3]:.0f})")
+        print(f"⚡ 완료! 소요시간: {elapsed:.2f}초")
+        print("-" * 40)
+
+        clear_gpu_memory()
+        return JSONResponse(content={
+            "success": True,
+            "detections": detections,
+            "model": model,
+            "image_width": image.width,
+            "image_height": image.height,
+        })
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        clear_gpu_memory()
+        print(f"❌ {model_label} 감지 오류: {str(e)}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"{model_label} 감지 오류: {str(e)}")
+
+# ========== ViTMatte 알파 매팅 API ==========
+
+@app.post("/vitmatte")
+async def run_vitmatte(
+    file: UploadFile = File(...),
+    mask: UploadFile = File(...),
+    erode_size: int = Query(default=10, ge=1, le=50, description="Trimap foreground erode 크기"),
+    dilate_size: int = Query(default=20, ge=1, le=100, description="Trimap unknown 영역 dilate 크기"),
+):
+    """
+    ViTMatte 알파 매팅
+
+    SAM2 등의 rough mask를 trimap으로 변환하여 정밀 알파 매트 생성.
+    머리카락 한 올 단위의 반투명 처리 가능.
+
+    - file: 원본 이미지
+    - mask: 바이너리 마스크 (흰색=전경, 검정=배경, 원본과 동일 크기)
+    """
+    print("-" * 40)
+    print(f"🎨 ViTMatte 요청: {file.filename} (erode={erode_size}, dilate={dilate_size})")
+    start_time = time.time()
+
+    if not VITMATTE_AVAILABLE:
+        raise HTTPException(status_code=500, detail="ViTMatte가 설치되지 않았습니다.")
+
+    # 파일 읽기
+    image_data = await file.read()
+    mask_data = await mask.read()
+
+    try:
+        image = Image.open(io.BytesIO(image_data))
+        image = ImageOps.exif_transpose(image)
+        image = image.convert("RGB")
+    except Exception:
+        raise HTTPException(status_code=400, detail="올바른 이미지 형식이 아닙니다.")
+
+    try:
+        mask_img = Image.open(io.BytesIO(mask_data)).convert("L")
+        # 마스크를 원본 크기에 맞추기
+        if mask_img.size != image.size:
+            mask_img = mask_img.resize(image.size, Image.Resampling.LANCZOS)
+    except Exception:
+        raise HTTPException(status_code=400, detail="올바른 마스크 형식이 아닙니다.")
+
+    try:
+        import cv2
+
+        vit_model, vit_processor = get_vitmatte_model()
+
+        mask_np = np.array(mask_img)
+
+        # Trimap 생성: erode → definite FG, dilate → unknown boundary
+        kernel_e = np.ones((erode_size, erode_size), np.uint8)
+        kernel_d = np.ones((dilate_size, dilate_size), np.uint8)
+        fg = cv2.erode(mask_np, kernel_e, iterations=1)
+        dilated = cv2.dilate(mask_np, kernel_d, iterations=1)
+
+        trimap = np.zeros_like(mask_np, dtype=np.uint8)
+        trimap[fg > 128] = 255           # definite foreground
+        trimap[(dilated > 128) & (fg <= 128)] = 128  # unknown
+        # rest stays 0 = definite background
+
+        trimap_pil = Image.fromarray(trimap)
+        print(f"   Trimap 생성: FG={np.sum(trimap==255)}, Unknown={np.sum(trimap==128)}, BG={np.sum(trimap==0)}")
+
+        # GPU VRAM 절약: 큰 이미지는 리사이즈 후 처리 → 알파맵만 원본 크기로 복원
+        MAX_VITMATTE_DIM = 1024
+        orig_w, orig_h = image.size
+        if max(orig_w, orig_h) > MAX_VITMATTE_DIM:
+            scale = MAX_VITMATTE_DIM / max(orig_w, orig_h)
+            new_w = int(orig_w * scale)
+            new_h = int(orig_h * scale)
+            image_small = image.resize((new_w, new_h), Image.Resampling.LANCZOS)
+            trimap_small = trimap_pil.resize((new_w, new_h), Image.Resampling.NEAREST)
+            print(f"   📐 ViTMatte 리사이즈: {orig_w}x{orig_h} → {new_w}x{new_h}")
+        else:
+            image_small = image
+            trimap_small = trimap_pil
+
+        def _run_vitmatte():
+            inputs = vit_processor(images=image_small, trimaps=trimap_small, return_tensors="pt")
+            inputs = {k: v.to(device).half() if v.dtype == torch.float32 else v.to(device) for k, v in inputs.items()}
+            with torch.no_grad():
+                output = vit_model(**inputs)
+            alpha = output.alphas[0, 0].float().cpu().numpy()
+            alpha = np.clip(alpha * 255, 0, 255).astype(np.uint8)
+            return alpha
+
+        alpha_np = await asyncio.to_thread(_run_vitmatte)
+        alpha_pil = Image.fromarray(alpha_np)
+        # 리사이즈했으면 알파맵을 원본 크기로 복원
+        if alpha_pil.size != (orig_w, orig_h):
+            alpha_pil = alpha_pil.resize((orig_w, orig_h), Image.Resampling.LANCZOS)
+            print(f"   📐 알파맵 복원: {alpha_np.shape[1]}x{alpha_np.shape[0]} → {orig_w}x{orig_h}")
+
+        # 원본에 알파 적용
+        result = image.copy()
+        result.putalpha(alpha_pil)
+
+        # 크롭 (알파 기준)
+        alpha_clean = alpha_pil.point(lambda x: 0 if x < 10 else x)
+        bbox = alpha_clean.getbbox()
+        crop_x, crop_y = 0, 0
+
+        if bbox:
+            padding = 20
+            x1, y1, x2, y2 = bbox
+            crop_x = max(0, x1 - padding)
+            crop_y = max(0, y1 - padding)
+            x2 = min(result.width, x2 + padding)
+            y2 = min(result.height, y2 + padding)
+            result = result.crop((crop_x, crop_y, x2, y2))
+            print(f"   ✂️ 크롭: ({crop_x},{crop_y}) → {result.size}")
+
+        # WebP 인코딩
+        img_byte_arr = io.BytesIO()
+        result.save(img_byte_arr, format='WEBP', quality=90)
+
+        elapsed = time.time() - start_time
+        print(f"⚡ ViTMatte 완료! 소요시간: {elapsed:.2f}초")
+        print("-" * 40)
+
+        headers = {
+            "X-Original-Width": str(image.width),
+            "X-Original-Height": str(image.height),
+            "X-Crop-X": str(crop_x),
+            "X-Crop-Y": str(crop_y),
+            "X-Crop-Width": str(result.width),
+            "X-Crop-Height": str(result.height),
+        }
+
+        clear_gpu_memory()
+        return Response(content=img_byte_arr.getvalue(), media_type="image/webp", headers=headers)
+
+    except Exception as e:
+        clear_gpu_memory()
+        print(f"❌ ViTMatte 오류: {str(e)}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"ViTMatte 오류: {str(e)}")
+
+# ========== MEMatte 알파 매팅 API ==========
+
+mematte_model = None
+
+def get_mematte_model():
+    """MEMatte 모델 로드 (Lazy Loading)"""
+    global mematte_model
+    if mematte_model is not None:
+        return mematte_model
+
+    import sys
+    mematte_dir = os.path.join(os.path.dirname(__file__), "models", "mematte")
+    if mematte_dir not in sys.path:
+        sys.path.insert(0, mematte_dir)
+
+    from detectron2.config import LazyConfig, instantiate
+    from detectron2.checkpoint import DetectionCheckpointer
+
+    print("📂 MEMatte 모델 로딩 중...")
+    cfg = LazyConfig.load(os.path.join(mematte_dir, "configs", "MEMatte_S_topk0.25_win_global_long.py"))
+    cfg.model.teacher_backbone = None
+    cfg.model.backbone.max_number_token = 18000
+    model = instantiate(cfg.model)
+    model.to(device)
+    model.eval()
+    ckpt_path = os.path.join(mematte_dir, "checkpoints", "MEMatte_ViTS_DIM.pth")
+    DetectionCheckpointer(model).load(ckpt_path)
+    print("✅ MEMatte 모델 로드 완료")
+    mematte_model = model
+    return mematte_model
+
+@app.post("/mematte")
+async def run_mematte(
+    file: UploadFile = File(...),
+    mask: UploadFile = File(...),
+    erode_size: int = Query(default=10, ge=1, le=50, description="Trimap foreground erode 크기"),
+    dilate_size: int = Query(default=20, ge=1, le=100, description="Trimap unknown 영역 dilate 크기"),
+):
+    """
+    MEMatte 알파 매팅 (ViTMatte 대비 메모리 88% 절약, 동일 품질)
+
+    ViTMatte와 동일하게 rough mask를 trimap으로 변환하여 정밀 알파 매트 생성.
+    """
+    print("-" * 40)
+    print(f"🧠 MEMatte 요청: {file.filename} (erode={erode_size}, dilate={dilate_size})")
+    start_time = time.time()
+
+    if not is_allowed_image(file):
+        raise HTTPException(status_code=400, detail="지원하지 않는 파일 형식입니다.")
+
+    image_data = await file.read()
+    mask_data = await mask.read()
+    if len(image_data) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=400, detail="파일이 너무 큽니다.")
+
+    try:
+        image = Image.open(io.BytesIO(image_data))
+        image = ImageOps.exif_transpose(image)
+        image = image.convert("RGB")
+
+        mask_img = Image.open(io.BytesIO(mask_data)).convert("L")
+
+        orig_w, orig_h = image.size
+
+        # Trimap 생성 (ViTMatte와 동일 로직)
+        import cv2
+        mask_np = np.array(mask_img)
+        kernel_e = np.ones((erode_size, erode_size), np.uint8)
+        kernel_d = np.ones((dilate_size, dilate_size), np.uint8)
+        fg = cv2.erode(mask_np, kernel_e, iterations=1)
+        dilated = cv2.dilate(mask_np, kernel_d, iterations=1)
+
+        trimap = np.zeros_like(mask_np, dtype=np.uint8)
+        trimap[fg > 128] = 255
+        trimap[(dilated > 128) & (fg <= 128)] = 128
+
+        trimap_pil = Image.fromarray(trimap)
+        print(f"   Trimap 생성: FG={np.sum(trimap==255)}, Unknown={np.sum(trimap==128)}, BG={np.sum(trimap==0)}")
+
+        model = get_mematte_model()
+
+        from torchvision.transforms import functional as TF
+        import torch
+
+        # 입력 준비: image(3ch) + trimap(1ch) → 4ch tensor
+        img_tensor = TF.to_tensor(image)  # [3, H, W]
+        tri_tensor = TF.to_tensor(trimap_pil)[0:1, :, :]  # [1, H, W]
+
+        data = {
+            'image': img_tensor.unsqueeze(0).to(device),
+            'trimap': tri_tensor.unsqueeze(0).to(device),
+        }
+
+        def _run_mematte():
+            with torch.no_grad():
+                output, _, _ = model(data, patch_decoder=True)
+                alpha = output['phas'].flatten(0, 2)  # [H, W]
+                # Trimap enforce
+                tri_flat = tri_tensor.squeeze(0).squeeze(0)
+                alpha[tri_flat == 0] = 0
+                alpha[tri_flat == 1] = 1
+                return alpha.cpu()
+
+        alpha = await asyncio.to_thread(_run_mematte)
+
+        alpha_np = (alpha.numpy() * 255).astype(np.uint8)
+        alpha_pil = Image.fromarray(alpha_np).resize((orig_w, orig_h), Image.Resampling.LANCZOS)
+
+        # RGBA 결과 생성
+        result = image.copy()
+        result.putalpha(alpha_pil)
+
+        # 크롭 (불투명 영역만)
+        bbox = result.getbbox()
+        if bbox:
+            result = result.crop(bbox)
+            print(f"   ✂️ 크롭: ({bbox[0]},{bbox[1]}) 크기({bbox[2]-bbox[0]}, {bbox[3]-bbox[1]})")
+
+        buf = io.BytesIO()
+        result.save(buf, format="WEBP", quality=95)
+        buf.seek(0)
+
+        elapsed = time.time() - start_time
+        print(f"✅ MEMatte 완료! 소요시간: {elapsed:.2f}초")
+
+        return Response(content=buf.getvalue(), media_type="image/webp")
+
+    except Exception as e:
+        clear_gpu_memory()
+        print(f"❌ MEMatte 오류: {str(e)}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"MEMatte 오류: {str(e)}")
+
+# ============================================================
+# BiRefNet-HR-matting (trimap-free, 고해상도 매팅)
+# ============================================================
+
+_birefnet_matting_model = None
+
+def get_birefnet_matting():
+    global _birefnet_matting_model
+    if _birefnet_matting_model is not None:
+        return _birefnet_matting_model
+    from transformers import AutoModelForImageSegmentation
+    print("📦 BiRefNet-HR-matting 모델 로딩...")
+    model = AutoModelForImageSegmentation.from_pretrained(
+        "ZhengPeng7/BiRefNet_HR-matting", trust_remote_code=True
+    )
+    model.to(device, dtype=torch.float16)
+    model.eval()
+    _birefnet_matting_model = model
+    print(f"✅ BiRefNet-HR-matting 로딩 완료 ({sum(p.numel() for p in model.parameters()) / 1e6:.1f}M, FP16)")
+    return model
+
+
+@app.post("/birefnet-matting")
+async def run_birefnet_matting(
+    file: UploadFile = File(...),
+    resolution: int = Query(default=2048, ge=512, le=4096, description="처리 해상도 (긴 쪽 기준)"),
+):
+    """
+    BiRefNet-HR-matting — trimap 없이 이미지만으로 고품질 알파 매팅.
+    머리카락/반투명 경계를 정밀하게 처리.
+    """
+    print("-" * 40)
+    print(f"🎨 BiRefNet-HR-matting 요청: {file.filename} (resolution={resolution})")
+    start_time = time.time()
+
+    image_data = await file.read()
+    try:
+        image = Image.open(io.BytesIO(image_data))
+        image = ImageOps.exif_transpose(image)
+        image = image.convert("RGB")
+    except Exception:
+        raise HTTPException(status_code=400, detail="올바른 이미지 형식이 아닙니다.")
+
+    try:
+        from torchvision import transforms
+
+        model = get_birefnet_matting()
+        orig_w, orig_h = image.size
+
+        # 해상도 조정
+        scale = min(resolution / max(orig_w, orig_h), 1.0)
+        proc_w = int(orig_w * scale)
+        proc_h = int(orig_h * scale)
+        # 32배수 정렬
+        proc_w = (proc_w + 31) // 32 * 32
+        proc_h = (proc_h + 31) // 32 * 32
+
+        transform = transforms.Compose([
+            transforms.Resize((proc_h, proc_w)),
+            transforms.ToTensor(),
+            transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+        ])
+        input_tensor = transform(image).unsqueeze(0).to(device, dtype=torch.float16)
+
+        with torch.no_grad():
+            preds = model(input_tensor)[-1].sigmoid()
+
+        alpha = preds[0, 0].cpu().float().numpy()
+        alpha = (alpha * 255).astype(np.uint8)
+
+        del input_tensor, preds
+        torch.cuda.empty_cache()
+
+        # 원본 크기로 복원
+        alpha_img = Image.fromarray(alpha).resize((orig_w, orig_h), Image.Resampling.LANCZOS)
+
+        # RGBA 합성
+        result = image.copy()
+        result.putalpha(alpha_img)
+
+        elapsed = time.time() - start_time
+        print(f"✅ BiRefNet-HR-matting 완료: {orig_w}x{orig_h} → {proc_w}x{proc_h} | {elapsed:.2f}초")
+
+        buf = io.BytesIO()
+        result.save(buf, format="WEBP", quality=95, lossless=False)
+        buf.seek(0)
+        return Response(content=buf.getvalue(), media_type="image/webp")
+
+    except Exception as e:
+        clear_gpu_memory()
+        print(f"❌ BiRefNet-HR-matting 오류: {str(e)}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"BiRefNet-HR-matting 오류: {str(e)}")
+
+
+# ============================================================
+# DiffMatte (diffusion 기반 매팅, trimap 필요)
+# ============================================================
+
+_diffmatte_model = None
+DIFFMATTE_DIR = r"C:\Documents and Settings\connect\automation-prototype\DiffMatte"
+
+def get_diffmatte():
+    global _diffmatte_model
+    if _diffmatte_model is not None:
+        return _diffmatte_model
+
+    import sys as _sys
+    if DIFFMATTE_DIR not in _sys.path:
+        _sys.path.insert(0, DIFFMATTE_DIR)
+
+    from detectron2.config import LazyConfig, instantiate
+    from detectron2.checkpoint import DetectionCheckpointer
+    from re import findall
+
+    config_path = os.path.join(DIFFMATTE_DIR, "configs", "ViTB.py")
+    checkpoint_path = os.path.join(DIFFMATTE_DIR, "checkpoints", "DiffMatte-ViTB.pth")
+    sample_strategy = "ddim10"
+
+    print(f"📦 DiffMatte-ViTB 모델 로딩... ({checkpoint_path})")
+    cfg = LazyConfig.load(config_path)
+
+    cfg.difmatte.args["use_ddim"] = True if "ddim" in sample_strategy else False
+    cfg.diffusion.steps = int(findall(r"\d+", sample_strategy)[0])
+
+    model = instantiate(cfg.model)
+    diffusion = instantiate(cfg.diffusion)
+    cfg.difmatte.model = model
+    cfg.difmatte.diffusion = diffusion
+    difmatte = instantiate(cfg.difmatte)
+    difmatte.to(device)
+    difmatte.eval()
+    DetectionCheckpointer(difmatte).load(checkpoint_path)
+
+    _diffmatte_model = difmatte
+    print(f"✅ DiffMatte-ViTB 로딩 완료 (FP32, max_size로 VRAM 관리)")
+    return difmatte
+
+
+@app.post("/diffmatte")
+async def run_diffmatte(
+    file: UploadFile = File(...),
+    mask: UploadFile = File(...),
+    erode_size: int = Query(default=10, ge=1, le=50),
+    dilate_size: int = Query(default=20, ge=1, le=100),
+    max_size: int = Query(default=1024, ge=256, le=2048, description="처리 해상도 (긴 쪽 기준). ViT 어텐션 특성상 큰 이미지는 OOM 위험"),
+):
+    """
+    DiffMatte — Diffusion 기반 매팅 (ECCV 2024, Composition-1k SOTA급).
+    trimap이 필요합니다 (mask에서 자동 생성).
+    """
+    print("-" * 40)
+    print(f"🎨 DiffMatte 요청: {file.filename} (erode={erode_size}, dilate={dilate_size}, max_size={max_size})")
+    start_time = time.time()
+
+    image_data = await file.read()
+    mask_data = await mask.read()
+
+    try:
+        image = Image.open(io.BytesIO(image_data))
+        image = ImageOps.exif_transpose(image)
+        image = image.convert("RGB")
+    except Exception:
+        raise HTTPException(status_code=400, detail="올바른 이미지 형식이 아닙니다.")
+
+    orig_size = image.size  # (W, H) — 출력은 원본 크기로 복원
+
+    try:
+        mask_img = Image.open(io.BytesIO(mask_data)).convert("L")
+        if mask_img.size != image.size:
+            mask_img = mask_img.resize(image.size, Image.Resampling.LANCZOS)
+    except Exception:
+        raise HTTPException(status_code=400, detail="올바른 마스크 형식이 아닙니다.")
+
+    # 리사이즈 (ViT 어텐션 O(n²) 때문에 VRAM 절약 필수)
+    w, h = image.size
+    if max(w, h) > max_size:
+        scale = max_size / max(w, h)
+        new_w, new_h = int(w * scale), int(h * scale)
+        image = image.resize((new_w, new_h), Image.Resampling.LANCZOS)
+        mask_img = mask_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+        print(f"   리사이즈: {w}x{h} → {new_w}x{new_h}")
+
+    try:
+        import cv2
+        from torchvision.transforms import functional as TF
+
+        model = get_diffmatte()
+
+        # Trimap 생성
+        mask_np = np.array(mask_img)
+        kernel_e = np.ones((erode_size, erode_size), np.uint8)
+        kernel_d = np.ones((dilate_size, dilate_size), np.uint8)
+        fg = cv2.erode(mask_np, kernel_e, iterations=1)
+        dilated = cv2.dilate(mask_np, kernel_d, iterations=1)
+
+        trimap_np = np.zeros_like(mask_np, dtype=np.uint8)
+        trimap_np[fg > 128] = 255
+        trimap_np[(dilated > 128) & (fg <= 128)] = 128
+
+        # 텐서 변환
+        image_tensor = TF.to_tensor(image).unsqueeze(0)
+        trimap_tensor = TF.to_tensor(Image.fromarray(trimap_np).convert("L")).unsqueeze(0)
+
+        # trimap을 3단계 값으로 정규화
+        trimap_tensor[trimap_tensor > 0.9] = 1.0
+        trimap_tensor[(trimap_tensor >= 0.1) & (trimap_tensor <= 0.9)] = 0.5
+        trimap_tensor[trimap_tensor < 0.1] = 0.0
+
+        input_data = {"image": image_tensor.to(device), "trimap": trimap_tensor.to(device)}
+
+        print(f"   추론 시작 (입력: {image_tensor.shape})")
+        with torch.no_grad():
+            output = model(input_data)
+
+        # GPU 텐서 정리
+        del input_data, image_tensor, trimap_tensor
+        torch.cuda.empty_cache()
+
+        print(f"   추론 완료, 출력 타입: {type(output)}, shape: {getattr(output, 'shape', 'N/A')}")
+
+        # output은 numpy array (H, W) values 0-255
+        if isinstance(output, np.ndarray):
+            alpha_np = output
+        elif hasattr(output, 'cpu'):
+            alpha_np = output.cpu().float().numpy()
+        else:
+            alpha_np = np.array(output)
+
+        if alpha_np.ndim == 3:
+            alpha_np = alpha_np[0] if alpha_np.shape[0] == 1 else alpha_np.squeeze()
+
+        if alpha_np.max() <= 1.0:
+            alpha_np = np.clip(alpha_np * 255, 0, 255).astype(np.uint8)
+        else:
+            alpha_np = np.clip(alpha_np, 0, 255).astype(np.uint8)
+
+        # 원본 크기로 alpha 복원
+        alpha_img = Image.fromarray(alpha_np)
+        if alpha_img.size != orig_size:
+            alpha_img = alpha_img.resize(orig_size, Image.Resampling.LANCZOS)
+
+        # RGBA 합성 (원본 크기 이미지 사용)
+        orig_image = Image.open(io.BytesIO(image_data))
+        orig_image = ImageOps.exif_transpose(orig_image).convert("RGB")
+        result = orig_image.copy()
+        result.putalpha(alpha_img)
+
+        elapsed = time.time() - start_time
+        print(f"✅ DiffMatte 완료: {orig_size[0]}x{orig_size[1]} (처리: {image.size[0]}x{image.size[1]}) | {elapsed:.2f}초")
+
+        buf = io.BytesIO()
+        result.save(buf, format="WEBP", quality=95, lossless=False)
+        buf.seek(0)
+        return Response(content=buf.getvalue(), media_type="image/webp")
+
+    except Exception as e:
+        clear_gpu_memory()
+        print(f"❌ DiffMatte 오류: {str(e)}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"DiffMatte 오류: {str(e)}")
+
+
 @app.get("/health")
 async def health_check():
     """서버 상태 확인"""
@@ -1423,7 +2737,10 @@ async def health_check():
         "device": device,
         "dtype": str(dtype),
         "ryan_engine": RYAN_ENGINE_AVAILABLE,
-        "loaded_models": list(loaded_models.keys()) + (["ben2"] if ben2_model is not None else [])
+        "loaded_models": list(loaded_models.keys()) + (["ben2"] if ben2_model is not None else []) + (["sam2"] if sam2_predictor is not None else []) + (["sam2_amg"] if sam2_mask_generator is not None else []) + (["mematte"] if mematte_model is not None else []),
+        "sam2_available": SAM2_AVAILABLE,
+        "gdino_available": GDINO_AVAILABLE,
+        "vitmatte_available": VITMATTE_AVAILABLE
     })
 
 if __name__ == "__main__":
@@ -1431,4 +2748,6 @@ if __name__ == "__main__":
     import os
     port = int(os.environ.get("PORT", 5001))
     workers = int(os.environ.get("WORKERS", 1))
-    uvicorn.run("server:app", host="0.0.0.0", port=port, workers=workers)
+    uvicorn.run("server:app", host="0.0.0.0", port=port, workers=workers,
+                h11_max_incomplete_event_size=1024*1024,
+                timeout_keep_alive=120)

@@ -350,10 +350,6 @@ function buildCoverContent() {
     const nudgeClass = pendingNudge ? ' nudge' : '';
     const showDragHint = pendingNudge && !localStorage.getItem('bookPreview_dragHintSeen');
     imgContent += `<div class="cover-child-wrap${nudgeClass}"${wrapStyle ? ` style="${wrapStyle}"` : ''}><img class="cover-child-img" src="${coverPhotoURL}" style="${childStyle}" /></div>`;
-    if (showDragHint) {
-      imgContent += `<div class="cover-drag-hint">터치해서 위치를 조정하세요</div>`;
-      localStorage.setItem('bookPreview_dragHintSeen', '1');
-    }
     if (pendingNudge) pendingNudge = false;
 
     // Model toggle in blur overlay
@@ -375,12 +371,20 @@ function buildCoverContent() {
     }).join('');
     const indicatorHtml = `<div class="model-toggle-indicator" style="transform:translateX(${activeIdx * 46}px)"></div>`;
 
+    const coverTouchHintDismissed = window._coverTouchHintDismissed;
+    const coverTouchHintHtml = coverTouchHintDismissed ? '' :
+      `<div class="cover-touch-hint">
+        <span>아이를 터치해 위치, 크기, 회전을 조절할 수 있어요</span>
+        <button class="cover-touch-hint-close">&times;</button>
+      </div>`;
+
     return `<div class="slide-img-wrap">${imgContent}${titleHtml}</div>
     <div class="page-text-overlay text-pos-center" style="${bgVar}color:white">
       <div class="cover-model-overlay">
         <div class="model-toggle model-toggle-large">${indicatorHtml}${toggleOpts}</div>
         <div class="model-toggle-hint">숫자를 눌러 배경이 가장 잘 지워진 사진을 골라주세요</div>
       </div>
+      ${coverTouchHintHtml}
     </div>`;
   }
 
@@ -409,7 +413,7 @@ function buildCoverContent() {
     <div class="slide-img-wrap">${imgContent}${titleHtml}</div>
     <div class="page-text-overlay text-pos-center" style="${bgVar}color:white">
       <div class="page-text-scroll">
-        <div style="font-weight:bold;font-size:15px;line-height:1.8;text-shadow:0 1px 4px rgba(0,0,0,0.6)">아이 사진을 자유롭게 여러개 선택해 보세요.<br>자유롭게 변경할 수 있습니다.</div>
+        <div style="font-size:15px;line-height:1.8;text-shadow:0 1px 4px rgba(0,0,0,0.6)">아이 사진을 자유롭게 <b>여러개 선택</b>해 보세요.<br><b>자유롭게 변경</b>할 수 있습니다.</div>
       </div>
     </div>`;
 }
@@ -2716,6 +2720,13 @@ function setupCoverEvents() {
     if (frameZone) {
       const slotKey = frameZone.dataset.slotKey;
       if (slotKey) triggerPagePhotoInput(slotKey);
+      return;
+    }
+    // Cover touch hint dismiss
+    if (e.target.closest('.cover-touch-hint-close')) {
+      window._coverTouchHintDismissed = true;
+      const hint = e.target.closest('.cover-touch-hint');
+      if (hint) hint.remove();
       return;
     }
     // Frame hint dismiss
