@@ -724,11 +724,14 @@ function initAlbumArrays() {
 }
 
 async function convertHeicIfNeeded(file) {
-  const name = file.name.toLowerCase();
+  const name = (file.name || '').toLowerCase();
   if (name.endsWith('.heic') || name.endsWith('.heif')) {
     if (typeof heic2any !== 'undefined') {
+      console.log(`HEIC 변환 시작: ${file.name}`);
       const blob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 1.0 });
-      return blob;
+      const converted = new File([blob], file.name.replace(/\.heic$/i, '.jpg').replace(/\.heif$/i, '.jpg'), { type: 'image/jpeg' });
+      console.log(`HEIC 변환 완료: ${converted.name} (${(converted.size / 1024).toFixed(0)}KB)`);
+      return converted;
     }
   }
   return file;
@@ -2017,46 +2020,6 @@ function addAlbumPage(templateIndex) {
   setTimeout(() => jumpToPage(allPages.length - 1), 100);
 }
 
-// ========== Face-API.js 초기화 (다중 인물 감지용) ==========
-
-// Face-API.js — PipelineCore 공유 모듈 사용
-PipelineCore.loadFaceApi(); // 비동기 초기화 시작
-const detectFacesInFile = PipelineCore.detectFacesInFile;
-
-async function segmentChildWithSAM2(file, faces) {
-  if (!faces || faces.length < 2) return null;
-
-  // 얼굴 크기순 정렬 (내림차순) — 가장 작은 얼굴이 아이
-  const sorted = [...faces].sort((a, b) => (b.box.width * b.box.height) - (a.box.width * a.box.height));
-  const childFace = sorted[sorted.length - 1];
-  const adultFaces = sorted.slice(0, -1);
-
-  const childCenterX = childFace.box.x + childFace.box.width / 2;
-  const childCenterY = childFace.box.y + childFace.box.height / 2;
-  const negPoints = adultFaces.map(f => [
-    f.box.x + f.box.width / 2,
-    f.box.y + f.box.height / 2
-  ]);
-
-  console.log(`👶 SAM2 요청: 아이 (${childCenterX.toFixed(0)}, ${childCenterY.toFixed(0)}), 어른 ${negPoints.length}명`);
-
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('point_x', childCenterX.toString());
-  formData.append('point_y', childCenterY.toString());
-  if (negPoints.length > 0) {
-    formData.append('neg_points', JSON.stringify(negPoints));
-  }
-
-  const resp = await PipelineCore.fetchWithTimeout(`${SMART_CROP_API}/segment-child`, {
-    method: 'POST',
-    body: formData,
-  }, 90000);
-
-  if (!resp.ok) throw new Error(`SAM2 서버 오류: ${resp.status}`);
-  return resp;
-}
-
 // ========== Cover Photo (smart crop + remove.bg) ==========
 
 const SMART_CROP_API = PipelineCore.API_URL;
@@ -2209,6 +2172,9 @@ async function processCandidate(candidate) {
   syncAndRender();
 
   try {
+    // 0. HEIC → JPEG 변환 (Chrome 등 HEIC 미지원 브라우저)
+    candidate.originalFile = await convertHeicIfNeeded(candidate.originalFile);
+
     // 1. 이미지 로드
     let img;
     try {
