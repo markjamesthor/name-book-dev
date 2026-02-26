@@ -409,7 +409,7 @@ function buildCoverContent() {
     <div class="slide-img-wrap">${imgContent}${titleHtml}</div>
     <div class="page-text-overlay text-pos-center" style="${bgVar}color:white">
       <div class="page-text-scroll">
-        <div class="page-story-text" style="font-weight:bold">아이 사진을 자유롭게 여러개 선택해 보세요.<br>자유롭게 변경할 수 있습니다.</div>
+        <div style="font-weight:bold;font-size:15px;line-height:1.8;text-shadow:0 1px 4px rgba(0,0,0,0.6)">아이 사진을 자유롭게 여러개 선택해 보세요.<br>자유롭게 변경할 수 있습니다.</div>
       </div>
     </div>`;
 }
@@ -506,8 +506,7 @@ function renderCoverControls() {
     statusEl.innerHTML = `
       <button class="cover-upload-btn" id="cover-upload-btn">
         사진 선택하기
-      </button>
-      <div style="font-size:12px;color:#1a1a1a;text-align:center;margin-top:4px;">동화책에 들어갈 아이 사진을 <b>여러장</b> 업로드 하세요</div>`;
+      </button>`;
   } else {
     statusEl.innerHTML = '';
   }
