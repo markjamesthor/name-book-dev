@@ -1147,7 +1147,7 @@ function renderCarousel() {
 
   const track = document.getElementById('carousel-track');
   const vw = viewer.clientWidth;
-  const slideGap = 8;
+  const slideGap = 0;
   for (let i = -1; i <= 1; i++) {
     const slide = document.createElement('div');
     slide.className = 'carousel-slide';
@@ -3106,7 +3106,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const vw = els.pageViewer.clientWidth;
     const track = document.getElementById('carousel-track');
     if (track) {
-      const slideGap = 8;
+      const slideGap = 0;
       for (const slide of track.children) slide.style.width = `${vw - slideGap}px`;
       track.style.transition = 'none';
       track.style.transform = `translateX(-${vw}px)`;
