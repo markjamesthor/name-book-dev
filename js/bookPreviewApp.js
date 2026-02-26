@@ -409,7 +409,7 @@ function buildCoverContent() {
     <div class="slide-img-wrap">${imgContent}${titleHtml}</div>
     <div class="page-text-overlay text-pos-center" style="${bgVar}color:white">
       <div class="page-text-scroll">
-        <div class="page-story-text">아이 사진을 올려보세요.<br>아이가 멋진 주인공인 동화책이 탄생합니다.</div>
+        <div class="page-story-text">아이 사진을 올려보세요.<br>아이가 주인공인 동화책이 탄생합니다.</div>
       </div>
     </div>`;
 }
