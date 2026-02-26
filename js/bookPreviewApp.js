@@ -1454,7 +1454,7 @@ function setupCarouselTouch(track) {
       mo.rotation = childRotStartRotation + (angle - childRotStartAngle);
       const dist = Math.hypot(t[1].clientX - t[0].clientX, t[1].clientY - t[0].clientY);
       if (childPinchStartDist > 0) {
-        mo.scale = Math.max(0.3, Math.min(3, childPinchStartScale * (dist / childPinchStartDist)));
+        mo.scale = Math.max(0.5, Math.min(2, childPinchStartScale * (dist / childPinchStartDist)));
       }
       childDragImg.style.transition = 'none';
       applyCoverManualOffset(childDragImg);
